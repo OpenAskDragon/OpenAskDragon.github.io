@@ -3,7 +3,7 @@ layout: home
 
 hero:
   name: "OpenAskDragon's Docs"
-  text: Make SLAM more Adaptive and Robust
+  text: Make SLAM more Adaptive and Robust!
   tagline: 机器人定位与建图技术笔记
   actions:
     - theme: brand
