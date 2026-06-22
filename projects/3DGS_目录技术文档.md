@@ -17,6 +17,30 @@ gitalk: false
 
 需要注意：当前目录未初始化 CodeGraph 索引，因此本文没有使用 AST 知识图谱结果；结构分析来自本地文件扫描、Python AST 摘要和项目说明文件。目录内包含多个上游开源项目或其派生版本，本文只描述当前本地副本可见内容，不代替各项目官方文档。
 
+## 0. 发布与维护信息
+
+本文档由当前工作区生成，并通过本机最新 `upload-pages` 技能发布到 `openaskdragon.github.io` 的 VitePress 文档站。该技能的当前规则是：Markdown 默认发布到文档仓库的 `projects/` 目录；如源文件已有 YAML frontmatter，则保留并使用其中的 `title`、`date`、`tags`、`gitalk` 等元信息；上传脚本会复制文件、提交、推送，并等待 GitHub Actions 完成站点构建。
+
+当前源文件：
+
+```text
+E:\绩效考核\分享\one_shot_targetless_based_camera_LiDAR_calib_algo\3DGS\3DGS_目录技术文档.md
+```
+
+文档仓库目标文件：
+
+```text
+C:\Users\I\.claude\repos\openaskdragon.github.io\projects\3DGS_目录技术文档.md
+```
+
+线上页面：
+
+```text
+https://openaskdragon.github.io/projects/3DGS_目录技术文档
+```
+
+后续如果当前 `3DGS` 目录、实验结果、脚本路径或 skill 发布规则发生变化，应先更新本地源文件，再用 `upload-pages` 技能重新发布，避免线上内容与本机实际状态不一致。
+
 ## 1. 总览
 
 当前 `3DGS` 目录不是单一工程，而是一个 3D Gaussian Splatting 研究与实验工作区，包含以下主要部分：
