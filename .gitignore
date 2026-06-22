@@ -1,3 +1,11 @@
-# jekyll local file
+# Dependencies
+node_modules/
+
+# VitePress build output
+dist/
+.vitepress/dist/
+.vitepress/cache/
+
+# Jekyll local files
 .jekyll*
 _site

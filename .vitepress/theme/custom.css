@@ -1,0 +1,89 @@
+/* === Typography === */
+:root {
+  --vp-font-family-base: 'Noto Serif SC', 'PT Serif', 'Source Han Serif', Georgia, serif;
+  --vp-font-family-mono: 'Menlo', 'Courier New', 'Spoqa Han Sans', monospace;
+
+  /* Open Color palette inspired */
+  --vp-c-brand-1: #228be6;
+  --vp-c-brand-2: #339af0;
+  --vp-c-brand-3: #1c7ed6;
+}
+
+/* === Post / Page content styling === */
+.vp-doc h1 {
+  font-weight: 700;
+  font-size: 30px;
+}
+
+.vp-doc h2 {
+  font-weight: 700;
+  font-size: 24px;
+}
+
+.vp-doc h3 {
+  font-weight: 700;
+  font-size: 20px;
+}
+
+.vp-doc p {
+  color: #333;
+  line-height: 1.7em;
+}
+
+/* === Blockquote === */
+.vp-doc blockquote {
+  border-left: 0.2em solid #ddd;
+  padding: 0 0 0 1.4rem;
+  color: #777;
+}
+
+/* === Inline code === */
+:root {
+  --vp-code-color: #e74c3c;
+}
+
+/* === Tags display === */
+.tag-list {
+  display: inline;
+  list-style: none;
+  padding: 0;
+}
+.tag-list li {
+  display: inline;
+  margin: 0 3px;
+}
+.tag-list li a {
+  font-size: 14px;
+  color: #555;
+  background: #e9ecef;
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-decoration: none;
+}
+.tag-list li a:hover {
+  color: #228be6;
+  background: #d0ebff;
+}
+
+/* === Post date === */
+.post-date {
+  font-weight: 300;
+  font-size: 14px;
+  color: #868e96;
+}
+
+/* === Busuanzi counter === */
+.busuanzi-counter {
+  font-family: Consolas, monospace;
+  color: Silver;
+  font-size: 12px;
+  text-align: center;
+  padding: 8px 0;
+}
+
+/* === Gitalk === */
+.gitalk-container {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--vp-c-divider);
+}
