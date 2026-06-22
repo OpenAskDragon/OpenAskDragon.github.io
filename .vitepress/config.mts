@@ -45,7 +45,6 @@ export default defineConfig({
         {
           text: '项目文档',
           items: [
-            { text: '概述', link: '/projects/' },
             { text: 'R-VIO2 算法详解', link: '/projects/rvio2_algorithm' },
           ],
         },
