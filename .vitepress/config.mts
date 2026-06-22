@@ -10,6 +10,9 @@ export default defineConfig({
     ['link', { rel: 'icon', href: '/images/favicon.ico' }],
   ],
 
+  // Exclude repo metadata files from the site
+  srcExclude: ['README.md', 'LICENSE', 'CNAME', 'package.json', 'package-lock.json'],
+
   // MathJax3 for LaTeX math rendering
   markdown: {
     config: (md) => {
