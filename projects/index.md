@@ -1,17 +1,20 @@
+---
+title: "项目文档"
+date: 2026-06-22
+tags: []
+gitalk: false
+---
+
 # 项目文档
 
 这里存放各项目的设计文档、API 说明和开发记录。
 
-## 如何使用
-
-通过 `upload-pages` skill 将项目中的 `.md` 文档上传到这里：
-
-```bash
-python ~/.claude/skills/upload-pages/scripts/upload_pages.py docs/ -t "my-project"
-```
-
-上传的文档会自动出现在侧边栏中。
-
 ---
 
-*目前还没有项目文档，开始上传吧！*
+## 📂 文档列表
+
+### [R-VIO2 算法详解](./rvio2_algorithm)
+
+基于单目相机和 IMU 的平方根机器人中心视觉-惯性里程计。详解 robocentric 状态表示、平方根信息滤波、IMU 传播、视觉前端跟踪、QR 消元更新、在线时空标定等核心算法。
+
+> 论文：Zheng Huai & Guoquan Huang, *IEEE RA-L 2022 / T-RO 2024*
