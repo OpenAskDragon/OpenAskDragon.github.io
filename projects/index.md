@@ -19,6 +19,6 @@ gitalk: false
 
 > 论文：Zheng Huai & Guoquan Huang, *IEEE RA-L 2022 / T-RO 2024*
 
-### [3DGS 目录技术文档](./3DGS_目录技术文档)
+### [3DGS：核心原理、技术路线与代码对应](./3DGS_目录技术文档)
 
-当前 3DGS 工作区的技术梳理，覆盖 `gaussian-splatting`、`RaDe-GS`、`gsplat`、`SplatLoc`、`gsplatloc`、`nerfstudio`、`splatfacto-w` 等子项目，以及 L2 桥梁数据的训练、评估和发布维护信息。
+围绕 3D Gaussian Splatting 的场景表示、可微 splatting、训练优化、densification、几何一致性、视觉定位与 Nerfstudio 插件实现，整理公式、技术路线和代码对应关系。

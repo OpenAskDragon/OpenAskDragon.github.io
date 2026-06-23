@@ -1,839 +1,792 @@
 ---
-title: 3DGS 目录技术文档
-date: 2026-06-22
-tags:
-  - 3DGS
-  - Gaussian Splatting
-  - Visual Localization
-  - RaDe-GS
-  - SplatLoc
-  - gsplat
+title: "3DGS：核心原理、技术路线与代码对应"
+date: 2026-06-23
+tags: [3DGS, Gaussian-Splatting, RaDe-GS, gsplat, SplatLoc, GSplatLoc, Nerfstudio]
 gitalk: false
 ---
 
-# 3DGS 目录技术文档
+# 3DGS：核心原理、技术路线与代码对应
 
-本文档面向当前目录 `E:\绩效考核\分享\one_shot_targetless_based_camera_LiDAR_calib_algo\3DGS`，依据本地文件树、各子项目 README、环境文件、配置文件、入口脚本和已有实验总结整理。文档目标是客观描述目录内各 3D Gaussian Splatting 相关项目的职责、运行入口、依赖关系、实验结论和后续使用注意事项。
+> **主题范围**：3D Gaussian Splatting 及其在渲染、深度几何重建、视觉定位和 Nerfstudio 插件生态中的几种实现路线。  
+> **涉及项目**：`gaussian-splatting`、`RaDe-GS`、`gsplat`、`SplatLoc`、`gsplatloc`、`nerfstudio`、`splatfacto-w`。  
 
-需要注意：当前目录未初始化 CodeGraph 索引，因此本文没有使用 AST 知识图谱结果；结构分析来自本地文件扫描、Python AST 摘要和项目说明文件。目录内包含多个上游开源项目或其派生版本，本文只描述当前本地副本可见内容，不代替各项目官方文档。
+---
 
-## 0. 发布与维护信息
+## 1. 算法概述
 
-本文档由当前工作区生成，并通过本机最新 `upload-pages` 技能发布到 `openaskdragon.github.io` 的 VitePress 文档站。该技能的当前规则是：Markdown 默认发布到文档仓库的 `projects/` 目录；如源文件已有 YAML frontmatter，则保留并使用其中的 `title`、`date`、`tags`、`gitalk` 等元信息；上传脚本会复制文件、提交、推送，并等待 GitHub Actions 完成站点构建。
+3D Gaussian Splatting（3DGS）是一类显式辐射场表示方法。它将场景表示为一组可优化的三维高斯 primitive，通过可微 rasterization 直接渲染图像。与 NeRF 类方法相比，3DGS 不需要对每条光线执行密集 MLP 查询，而是将三维高斯投影为屏幕空间椭圆 splat，并按深度顺序进行 alpha compositing。
 
-当前源文件：
+标准 3DGS 的核心要素包括：
 
-```text
-E:\绩效考核\分享\one_shot_targetless_based_camera_LiDAR_calib_algo\3DGS\3DGS_目录技术文档.md
-```
+1. **显式场景表示**：每个 primitive 是一个带颜色、透明度和各向异性协方差的 3D Gaussian；
+2. **可微 splatting rasterizer**：将三维高斯投影到二维图像平面，计算颜色、深度和梯度；
+3. **联合优化**：优化位置、尺度、旋转、不透明度和球谐颜色系数；
+4. **自适应密度控制**：根据屏幕空间梯度进行 clone、split、prune 和 opacity reset；
+5. **扩展属性场**：在定位或语义任务中，可将 descriptor、feature map、marker score、depth、normal 等属性绑定到 Gaussian。
 
-文档仓库目标文件：
+不同项目的侧重点不同：
 
-```text
-C:\Users\I\.claude\repos\openaskdragon.github.io\projects\3DGS_目录技术文档.md
-```
-
-线上页面：
-
-```text
-https://openaskdragon.github.io/projects/3DGS_目录技术文档
-```
-
-后续如果当前 `3DGS` 目录、实验结果、脚本路径或 skill 发布规则发生变化，应先更新本地源文件，再用 `upload-pages` 技能重新发布，避免线上内容与本机实际状态不一致。
-
-## 1. 总览
-
-当前 `3DGS` 目录不是单一工程，而是一个 3D Gaussian Splatting 研究与实验工作区，包含以下主要部分：
-
-| 路径 | 主要角色 | 当前可见特征 |
+| 项目 | 技术定位 | 关键扩展 |
 |---|---|---|
-| `gaussian-splatting/` | GraphDECO 原始 3DGS 参考实现 | 训练、渲染、指标计算、COLMAP 数据转换、SIBR viewer 相关资源 |
-| `RaDe-GS/` | Rasterizing Depth in Gaussian Splatting | 当前 L2 桥梁数据实验实际使用的训练主体，支持深度、法线、多视图正则和 mesh extraction |
-| `gsplat/` | Nerfstudio 团队维护的 CUDA Gaussian rasterization 库 | Python/CUDA rasterization、训练策略、压缩、LiDAR rasterization、实验性 inference rendering |
-| `gsplatloc/` | GSplatLoc 视觉定位系统 | 将关键点描述子嵌入 3DGS，用于 2D-3D 匹配、PnP 初值和位姿细化 |
-| `SplatLoc/` | SplatLoc AR 视觉定位系统 | 训练 3D feature decoder 与 3D Gaussian，评估渲染、定位和 landmark selection |
-| `nerfstudio/` | Nerfstudio 框架 | NeRF/3DGS 通用训练框架、viewer、数据处理和插件基础 |
-| `splatfacto-w/` | Nerfstudio 的 in-the-wild Gaussian Splatting 插件 | 面向 PhotoTourism/野外采集的 appearance/transient 建模插件 |
-| `L2_3DGS_EXPERIMENT_SUMMARY.md` | 本地 L2 桥梁数据实验总结 | 记录了 RaDe-GS + LAS 初始化 + gsplat 评估的最佳配置和指标 |
+| `gaussian-splatting` | 原始 3DGS 训练与渲染基线 | RGB 重建、SH 颜色、densification、SIBR viewer |
+| `RaDe-GS` | 深度/法线/几何增强 3DGS | expected/median depth、normal consistency、multi-view NCC、mesh extraction |
+| `gsplat` | 高性能 Gaussian rasterization 库 | batched rasterization、packed mode、2DGS/3DGUT/LiDAR render mode |
+| `SplatLoc` | 3DGS 视觉定位系统 | 3D feature decoder、marker probability、2D-3D matching、PnP |
+| `gsplatloc` | keypoint descriptor grounded 3DGS | XFeat descriptor、Gaussian feature field、PnP-RANSAC、warp refinement |
+| `nerfstudio` | 神经渲染框架 | 数据处理、训练 pipeline、viewer、插件注册 |
+| `splatfacto-w` | Nerfstudio in-the-wild 3DGS 插件 | transient/appearance/background 建模 |
 
-文件规模上，当前目录包含大量 C++/CUDA/OpenGL viewer 资源、HTML 文档和 Python 训练脚本。按文件扩展名粗略统计，`.py` 文件约 608 个，`.cpp` 文件约 875 个，`.hpp` 文件约 1066 个，`.cu` 文件约 56 个，`.md` 文件约 111 个。需要区分核心训练代码和第三方 viewer/submodule 代码。
+---
 
-## 2. 3DGS 基础概念
+## 2. 3D Gaussian 表示
 
-3D Gaussian Splatting 将场景表示为一组可优化的三维高斯 primitive。每个 Gaussian 通常包含：
+### 2.1 单个 Gaussian 的参数
 
-- 三维中心位置 `xyz`
-- 不透明度 `opacity`
-- 各向异性尺度 `scale`
-- 旋转 `rotation`
-- 颜色或球谐系数 `SH`
-- 在扩展系统中还可能包含深度、法线、语义特征、关键点描述子或 appearance embedding
+一个 3D Gaussian 可写为：
 
-渲染时，三维 Gaussian 会投影到图像平面，形成屏幕空间的二维 footprint，再通过可微 rasterization 累积颜色、深度或特征。因此屏幕上看到的是二维 splat footprint，但模型本体仍是三维 Gaussian。
+$$
+G_i(\mathbf{x}) = \exp\left(-\frac{1}{2}(\mathbf{x}-\boldsymbol{\mu}_i)^\top
+\boldsymbol{\Sigma}_i^{-1}
+(\mathbf{x}-\boldsymbol{\mu}_i)\right)
+$$
 
-原始 3DGS 的典型训练循环包括：
+其中：
 
-1. 从 COLMAP/SfM 或其他点云初始化 Gaussian。
-2. 根据训练相机渲染当前视角。
-3. 使用 RGB L1、SSIM 等重建损失优化位置、颜色、尺度、旋转和不透明度。
-4. 周期性进行 densification、split、clone、prune 和 opacity reset。
-5. 保存 `point_cloud/iteration_xxx/point_cloud.ply` 作为训练结果。
+- $\boldsymbol{\mu}_i \in \mathbb{R}^3$：Gaussian 中心；
+- $\boldsymbol{\Sigma}_i \in \mathbb{R}^{3\times3}$：三维协方差；
+- $\alpha_i \in (0,1)$：不透明度；
+- $\mathbf{c}_i(\mathbf{d})$：视角相关颜色，通常用 spherical harmonics 表示；
+- 扩展系统中还可能含有 descriptor、semantic feature、depth confidence、marker score 等属性。
 
-当前目录中的 RaDe-GS、SplatLoc、GSplatLoc 和 Splatfacto-W 都可以看作在这个基础范式上添加深度/几何正则、视觉定位特征或野外场景鲁棒建模。
-
-## 3. 子项目详解
-
-### 3.1 `gaussian-splatting/`
-
-这是 GraphDECO/Inria 的 3D Gaussian Splatting 参考实现。本地 README 说明该项目包含四类组件：
-
-- PyTorch 优化器：从 SfM 输入训练 3D Gaussian 模型。
-- 网络 viewer：连接训练过程并实时查看优化状态。
-- OpenGL/SIBR 实时 viewer：加载训练完成的模型并实时渲染。
-- `convert.py`：将自定义图像转换成优化可用的 COLMAP/SfM 数据结构。
-
-核心入口：
-
-| 文件 | 功能 |
-|---|---|
-| `train.py` | 训练 3DGS 模型 |
-| `render.py` | 渲染 train/test 视角 |
-| `metrics.py` | 计算 PSNR、SSIM、LPIPS 等指标 |
-| `full_eval.py` | 批量复现实验评估流程 |
-| `convert.py` | 调用 COLMAP/ImageMagick 生成标准数据结构 |
-| `render_novel_poses.py` | 本地扩展的 novel pose 渲染工具 |
-
-核心模块：
-
-| 模块 | 职责 |
-|---|---|
-| `scene/gaussian_model.py` | Gaussian 参数、优化器、densification/prune、PLY 存取 |
-| `scene/dataset_readers.py` | COLMAP 和 NeRF synthetic 数据读取 |
-| `scene/cameras.py` | Camera/MiniCam 数据结构 |
-| `gaussian_renderer/__init__.py` | 可微 Gaussian rasterization 调用封装 |
-| `arguments/__init__.py` | `ModelParams`、`PipelineParams`、`OptimizationParams` 参数组 |
-| `utils/graphics_utils.py` | 相机投影、坐标变换、FoV/focal 转换 |
-| `utils/loss_utils.py` | L1/L2/SSIM/Fused SSIM 等损失 |
-
-标准训练命令：
-
-```bash
-python train.py -s <COLMAP_or_NeRF_dataset>
-```
-
-标准评估命令：
-
-```bash
-python train.py -s <dataset> --eval
-python render.py -m <model_dir>
-python metrics.py -m <model_dir>
-```
-
-数据结构要求：
-
-```text
-<dataset>
-|-- images/
-|-- sparse/
-    |-- 0/
-        |-- cameras.bin
-        |-- images.bin
-        |-- points3D.bin
-```
-
-本地环境文件 `environment.yml` 指定了 `python=3.7.13`、`pytorch=1.12.1`、`cudatoolkit=11.6`，并通过 pip 安装 `diff-gaussian-rasterization`、`simple-knn`、`fused-ssim` 等子模块。官方 README 同时提到较新 PyTorch/CUDA 也可能可用，但结果可重复性会受环境影响。
-
-### 3.2 `RaDe-GS/`
-
-RaDe-GS 全称为 Rasterizing Depth in Gaussian Splatting。README 显示其论文已被 ACM TOG 接收，并集成了 PGSR 的 multi-view regularization。当前 L2 实验总结明确指出，本机 L2 suspension bridge 数据训练入口使用的是 `3DGS/RaDe-GS/train.py`。
-
-核心入口：
-
-| 文件 | 功能 |
-|---|---|
-| `train.py` | 训练 RaDe-GS 模型 |
-| `render.py` | novel view synthesis 渲染 |
-| `metric.py` | 渲染指标评估 |
-| `mesh_extract.py` | 通用 mesh extraction |
-| `mesh_extract_tnt.py` | Tanks and Temples mesh extraction |
-| `mesh_extract_tetrahedra.py` | Marching Tetrahedra 相关 mesh extraction |
-| `evaluate_dtu_mesh.py` | DTU 几何评估 |
-| `geometry_metric.py` | Objaverse 等几何指标 |
-| `eval_tnt/run.py` | Tanks and Temples 几何评估流程 |
-
-重要模块：
-
-| 模块 | 职责 |
-|---|---|
-| `gaussian_renderer/__init__.py` | 除 RGB render 外，还提供 `integrate`、`sample_depth` 等深度相关接口 |
-| `scene/gaussian_model.py` | Gaussian 模型与训练参数 |
-| `scene/appearance_network.py` | decoupled appearance 网络 |
-| `utils/graphics_utils.py` | 深度转法线、重投影、双线性采样等几何工具 |
-| `utils/loss_utils.py` | RGB/SSIM/appearance/multi-view patch matching 损失 |
-| `utils/tetmesh.py` | marching tetrahedra 支持 |
-
-README 给出的依赖安装流程包括：
-
-```bash
-conda create -n radegs python=3.12
-conda activate radegs
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu130
-pip install -r requirements.txt
-pip install submodules/diff-gaussian-rasterization --no-build-isolation
-pip install submodules/warp-patch-ncc --no-build-isolation
-pip install submodules/simple-knn/ --no-build-isolation
-pip install git+https://github.com/rahul-goel/fused-ssim/ --no-build-isolation
-conda install conda-forge::cgal
-pip install submodules/tetra_triangulation/ --no-build-isolation
-```
-
-本地 `requirements.txt` 仅列出 Python 层依赖：`open3d`、`trimesh`、`scikit-image`、`opencv-python`、`plyfile`、`tqdm`。实际训练还依赖 CUDA 扩展。
-
-典型命令：
-
-```bash
-# DTU
-python train.py -s <path_to_dtu> -m <output_dir> -r 2 --use_decoupled_appearance 3
-python mesh_extract.py -m <output_dir>
-python evaluate_dtu_mesh.py -m <output_dir>
-
-# Tanks and Temples
-python train.py -s <path_to_preprocessed_tnt> -m <output_dir> -r 2 --use_decoupled_appearance 3
-python mesh_extract_tnt.py -m <output_dir>
-python eval_tnt/run.py --dataset-dir <gt_tnt> --traj-path <COLMAP_SfM.log> --ply-path <output_dir>/recon_post.ply --out-dir <output_dir>/mesh
-
-# Novel view synthesis
-python train.py -s <dataset> -m <output_dir> --eval
-python render.py -m <output_dir>
-python metrics.py -m <output_dir>
-```
-
-与原始 3DGS 相比，RaDe-GS 更偏重几何、深度、法线和 mesh 输出。对当前 L2 桥梁数据，它被用作大场景 3DGS 训练主体。
-
-### 3.3 `gsplat/`
-
-`gsplat` 是 Nerfstudio 团队维护的开源 CUDA Gaussian rasterization 库。README 描述其目标是提供更快、更省显存、功能更丰富的 Gaussian splatting Python 绑定。当前本地副本 README 包含 2026 年未发布更新，如 HiGS inference rendering、LiDAR rasterization、TorchScript-oriented camera operators、3DGUT 扩展等。
-
-核心功能：
-
-- CUDA 加速 3D/2D Gaussian rasterization。
-- Python API `gsplat.rendering.rasterization(...)`。
-- 多场景/多视角 batch 支持。
-- Gaussian 压缩、PLY/splat 导出。
-- DefaultStrategy、MCMCStrategy 等 densification/训练策略。
-- LiDAR rasterization 和 `eval3d` 渲染路径。
-- 实验性 `experimental.render` inference-only pipeline。
-
-重要模块：
-
-| 模块 | 职责 |
-|---|---|
-| `gsplat/rendering.py` | 主 rasterization API 和 render mode 判断 |
-| `gsplat/cuda/_wrapper.py` | CUDA op 懒加载封装 |
-| `gsplat/cuda/_torch_impl.py` | PyTorch fallback/参考实现 |
-| `gsplat/cuda/_torch_impl_2dgs.py` | 2DGS 相关实现 |
-| `gsplat/cuda/_torch_impl_lidar.py` | LiDAR rasterization 支持 |
-| `gsplat/strategy/default.py` | 默认 densification 策略 |
-| `gsplat/strategy/mcmc.py` | MCMC 风格 Gaussian 训练策略 |
-| `gsplat/compression/` | PNG/KMeans/NPZ 等压缩实现 |
-| `gsplat/exporter.py` | PLY/splat 文件导入导出 |
-
-安装方式：
-
-```bash
-pip install gsplat
-```
-
-或源码安装：
-
-```bash
-pip install git+https://github.com/nerfstudio-project/gsplat.git
-```
-
-本地 `pyproject.toml` 显示构建依赖包括 `setuptools`、`wheel`、`ninja`、`torch`、`numpy`、`rich`。README 说明 PyPI 安装方式会在首次运行时 JIT 构建 CUDA 代码；源码安装则安装期构建。
-
-在当前工作区中，`gsplat` 的直接价值是作为高性能真实 splat 渲染和评估工具。L2 实验总结中也明确提到当前评估使用 gsplat 真实 splat rasterization，而不是简单点云投影。
-
-### 3.4 `gsplatloc/`
-
-`gsplatloc` 对应论文 “GSplatLoc: Grounding Keypoint Descriptors into 3D Gaussian Splatting for Improved Visual Localization”。其目标是在 3DGS 中承载关键点描述子，改善视觉定位中的 2D-3D 匹配。
-
-核心流程：
-
-1. 准备 7Scenes 或 Cambridge Landmarks 数据。
-2. 用 SfM 点云初始化 3DGS。
-3. 训练带特征的 Gaussian 模型。
-4. 使用 XFeat 等关键点/描述子从 query image 中提取 2D 特征。
-5. 从 Gaussian feature field 中建立 2D-3D 对应关系。
-6. 通过 PnP-RANSAC 得到 pose prior。
-7. 使用 differentiable warping 进一步细化位姿。
-
-核心入口：
-
-| 文件 | 功能 |
-|---|---|
-| `train.py` | 训练带描述子/特征的 3DGS |
-| `loc_inference.py` | 定位推理主流程，包含 pose prior estimation 和 pose refinement |
-| `render.py` | 渲染模型输出 |
-| `view.py` | viewer 入口 |
-| `metrics.py` | 指标计算 |
-| `datasets/setup_7scenes.py` | 7Scenes 数据准备 |
-| `datasets/setup_cambridge.py` | Cambridge Landmarks 数据准备 |
-
-关键模块：
-
-| 模块 | 职责 |
-|---|---|
-| `scene/gaussian_model.py` | Gaussian 参数和特征承载 |
-| `gaussian_renderer/__init__.py` | RGB/feature/depth 渲染与 edit 支持 |
-| `utils/loc_utils.py` | pose error、2D-3D correspondence 查找 |
-| `warping/warping_loss.py` | differentiable warp pose refinement loss |
-| `models/networks.py` | MLP/CNN feature decoder |
-| `encoders/XFeat/` | XFeat 关键点描述子相关代码 |
-
-典型训练命令：
-
-```bash
-python train.py -s data/DATASET_NAME -m output/OUTPUT_NAME --iterations 7000
-```
-
-定位命令：
-
-```bash
-python loc_inference.py -m output/OUTPUT_NAME
-```
-
-本地 README 指出 `diff-gaussian-rasterization` 模块默认面向 64 维 XFeat descriptor；若要换用不同维度的 encoder，需要修改 CUDA rasterizer 中的 `NUM_SEMANTIC_CHANNELS` 并重新编译。
-
-### 3.5 `SplatLoc/`
-
-`SplatLoc` 对应 “SplatLoc: 3D Gaussian Splatting-based Visual Localization for Augmented Reality”。其方法是使用单目 RGB-D 帧重建场景 3D Gaussian，同时学习无偏 3D descriptor field，用于精确 2D-3D feature matching 和 6-DoF camera pose estimation。
-
-核心入口：
-
-| 文件 | 功能 |
-|---|---|
-| `train_decoder.py` | 训练 3D feature decoder |
-| `train_gaussians.py` | 训练 3D Gaussian 模型 |
-| `test.py` | 定位、渲染和 landmark selection 评估 |
-| `replica.sh` | Replica 数据集批处理脚本 |
-| `scenes12.sh` | 12-Scenes 数据集批处理脚本 |
-
-预处理模块：
-
-| 文件 | 功能 |
-|---|---|
-| `pre_process/extract_save_sp_feature.py` | SuperPoint feature map 和 keypoint score 提取 |
-| `pre_process/gen_netvlad_retrieval.py` | NetVLAD 图像检索结果生成 |
-| `pre_process/gen_3d_fusion_feature.py` | 3D feature volume/cloud 融合 |
-
-视觉化模块：
-
-| 文件 | 功能 |
-|---|---|
-| `visualizations/render_localization.py` | 用 Open3D 渲染定位过程 |
-| `visualizations/render_localization_with_matches.py` | 显示带 2D-3D match 的定位过程 |
-
-重要内部模块：
-
-| 模块 | 职责 |
-|---|---|
-| `utils/dataset.py` | `ReplicaDataset`、`Scenes12Dataset` 和数据加载 |
-| `utils/fusion_utils.py` | TSDFVolumeTorch、feature fusion、mesh/point cloud 写出 |
-| `utils/eval_utils.py` | 渲染、pose、selection 评估 |
-| `utils/selection.py` | 3D landmark selection |
-| `utils/match_utils.py` | Hungarian matching |
-| `models/decoders.py` | FeatureNet、FeatureDecoder |
-| `models/encoding.py` | HashGrid/frequency/identity encoder 构建 |
-
-README 给出的训练和评估方式：
-
-```bash
-# train the 3D feature decoder
-CUDA_VISIBLE_DEVICES=1 python train_decoder.py --config ./configs/replica_nerf/$scene.yaml
-
-# train the 3D gaussian model
-CUDA_VISIBLE_DEVICES=1 python train_gaussians.py --config ./configs/replica_nerf/$scene.yaml
-
-# eval localization and rendering
-CUDA_VISIBLE_DEVICES=1 python test.py --config ./configs/replica_nerf/$scene.yaml --eval_pose --eval_rendering
-
-# eval 3D landmark selection
-CUDA_VISIBLE_DEVICES=1 python test.py --config ./configs/replica_nerf/$scene.yaml --eval_selection --landmark_num 5000
-```
-
-配置文件中可见的关键默认值：
-
-| 配置项 | Replica 默认值 | 12-Scenes 默认值 |
-|---|---:|---:|
-| 图像宽高 | 640 x 480 | 640 x 480 |
-| `final_dim` | 256 | 256 |
-| `opt_params.iterations` | 30000 | 30000 |
-| `densification_interval` | 100 | 100 |
-| `densify_from_iter` | 500 | 500 |
-| `densify_until_iter` | 15000 | 15000 |
-| `sh_degree` | 0 | 0 |
-| `data_device` | cuda | cuda |
-
-本地 `environment.yml` 使用 `python=3.7.13`、`pytorch=1.12.1`、`cudatoolkit=11.6`，并依赖 `open3d==0.17.0`、`evo==1.11.0`、`pycolmap`、`torchmetrics`、`lpips`、`wandb`、`PyOpenGL` 等。
-
-### 3.6 `nerfstudio/`
-
-`nerfstudio` 是通用 NeRF/3DGS 框架。README 表明它提供：
-
-- 模块化训练 pipeline。
-- Web viewer。
-- 数据处理命令 `ns-process-data`。
-- 训练命令 `ns-train`。
-- 导出命令 `ns-export`。
-- 视频渲染命令 `ns-render`。
-- 插件注册机制。
-
-典型安装：
-
-```bash
-conda create --name nerfstudio -y python=3.8
-conda activate nerfstudio
-pip install torch==2.1.2+cu118 torchvision==0.16.2+cu118 --extra-index-url https://download.pytorch.org/whl/cu118
-conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
-pip install ninja git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-pip install -e .
-```
-
-典型训练：
-
-```bash
-ns-download-data nerfstudio --capture-name=poster
-ns-train nerfacto --data data/nerfstudio/poster
-```
-
-在当前目录中，`nerfstudio` 主要为 `splatfacto-w` 插件提供运行基础，也可以作为其他 3DGS/NeRF 方法的对照框架。
-
-### 3.7 `splatfacto-w/`
-
-`splatfacto-w` 是 Nerfstudio 的 Gaussian Splatting for in-the-wild captures 插件。本地 `pyproject.toml` 显示其依赖 `nerfstudio >= 1.1.0`，并注册了两个 Nerfstudio method config：
-
-- `splatfacto-w`
-- `splatfacto-w-light`
-
-还注册了一个 dataparser：
-
-- `splatfactow_dataparser`
-
-关键模块：
-
-| 模块 | 职责 |
-|---|---|
-| `splatfactow/splatfactow_model.py` | 主模型配置和模型实现 |
-| `splatfactow/splatfactow_field.py` | background field 和 SplatfactoW field |
-| `splatfactow/splatfactow_datamanager.py` | 数据管理、图像 undistort |
-| `splatfactow/nerfw_dataparser.py` | NeRF-W/PhotoTourism 数据解析 |
-| `export_script.py` | 导出 PLY 文件 |
-
-安装注册：
-
-```bash
-conda activate nerfstudio
-cd splatfacto-w/
-pip install -e .
-ns-install-cli
-```
-
-PhotoTourism/NeRF-W 风格训练：
-
-```bash
-ns-download-data phototourism --capture-name <capture_name>
-ns-train splatfacto-w --data <PATH> nerf-w-data-parser-config --data_name <trevi|sacre|brandenburg>
-```
-
-通用轻量版本：
-
-```bash
-ns-train splatfacto-w-light [OPTIONS] --data <PATH> <dataparser>
-```
-
-README 中建议的增强选项：
-
-- `--pipeline.model.enable_bg_model True`
-- `--pipeline.model.enable_alpha_loss True`
-- `--pipeline.model.enable_robust_mask True`
-
-这些选项分别用于背景建模、sky/alpha 约束和 transient object 鲁棒处理，适合曝光变化、动态对象、遮挡和非受控采集数据。
-
-## 4. 当前 L2 桥梁数据实验结论
-
-根目录的 `L2_3DGS_EXPERIMENT_SUMMARY.md` 记录了本机 L2 suspension bridge 数据的 3DGS 实验。该实验是当前目录中最具体、最可复用的实证材料。
-
-### 4.1 数据与任务
-
-L2 图像数据：
-
-```text
-data/3DGS/L2_roma_mixed/images
-```
-
-已记录特点：
-
-- 共 35 张训练图像，编号 `000000` 到 `000034`。
-- 原始分辨率为 `5280 x 3956`。
-- RaDe-GS 训练时检测到宽度超过 1.6K，会自动缩放到约 1.6K 宽。
-- 采集路径沿桥方向形成航线，不是环绕式多角度采集。
-- 相机高度变化很小，基本处于同一飞行平面。
-- 水面、车辆、船只、吊索细线、桥塔遮挡和局部时序差异会限制静态 3DGS 重建质量。
-
-点云初始化：
-
-```text
-data/suspension_bridge.las
-data/3DGS/L2_roma_mixed_las_init_1p5m
-```
-
-关键结论是：使用完整三维 LAS 点云初始化是 L2 数据训练出可用 3DGS 的前提。初始化点数为 1,500,000。早期未使用完整 LAS 初始化时，模型质量明显偏差，viewer 中容易出现黑屏或很差的 splat 分布。
-
-### 4.2 最佳模型
-
-当前实验总结给出的最优模型：
-
-```text
-outputs/l2_3dgs_rade_las_init_1p5m_mv200_densify8k_int1000_ncc015_14000/point_cloud/iteration_8000/point_cloud.ply
-```
-
-核心指标：
-
-| 评估集 | PSNR | SSIM | MAE |
-|---|---:|---:|---:|
-| 5 个抽样训练视角 `0,8,16,24,32` | 23.0073 | 0.9080 | 0.04253 |
-| 全部 35 个训练视角 `0-34` | 23.0417 | 0.9097 | 0.04246 |
-
-最佳配置：
-
-| 参数 | 值 |
-|---|---:|
-| LAS init points | 1.5M |
-| `multi_view_max_dis` | 200 |
-| `multi_view_max_angle` | 90 |
-| `densify_from_iter` | 1500 |
-| `densify_until_iter` | 8000 |
-| `densification_interval` | 1000 |
-| `densify_grad_threshold` | 0.001 |
-| `opacity_reset_interval` | 100000 |
-| `regularization_from_iter` | 8000 |
-| `lambda_multi_view_ncc` | 0.15 |
-| best iteration | 8000 |
-| Gaussian count | 1,246,137 |
-
-### 4.3 调参结论
-
-实验总结中比较了多个设置：
-
-| 配置 | 关键特点 | 结果概述 |
-|---|---|---|
-| 早期模型 | 未正确使用完整 LAS 初始化或配置不适配 | PSNR 约 16.23 dB，质量较差 |
-| LAS 1.5M + no densify | 关闭 densification | 20k iteration 约 20.95 PSNR，上限有限 |
-| visible LAS init | 只保留训练相机可见点 | 7000 iteration 约 20.01 PSNR，未显著优于原始 LAS 初始化 |
-| densify3k / interval 250 | 早期有限 densify，频率较高 | 14k iteration 约 21.65 PSNR |
-| densify8k / interval 1000 | 大场景稀疏 densify | 8000 iteration 达到约 23.04 PSNR，是当前最佳 |
-
-主要结论：
-
-- 对 L2 这种大场景，多图训练时 densification/prune 不宜过于频繁。
-- `densification_interval=1000` 明显优于 `250`。
-- `densify_until_iter=8000` 与 `regularization_from_iter=8000` 的组合在当前实验中较优。
-- 最佳停止点是 `8000 iteration`，不是 14000 或 20000。
-- 继续训练会拉低部分视角质量，尤其是水面和桥塔附近视角。
-
-### 4.4 查看与评估
-
-实验总结中记录的 viewer 启动脚本：
-
-```text
-tools/run_l2_best_3dgs_viewer.cmd
-```
-
-启动后访问：
-
-```text
-http://localhost:8082
-```
-
-评估方式使用 gsplat 真实 splat 渲染，而不是点云投影。5 视角评估命令模式：
-
-```powershell
-D:\miniforge\envs\da3\python.exe tools\evaluate_gsplat_train_views.py `
-  --ply outputs\l2_3dgs_rade_las_init_1p5m_mv200_densify8k_int1000_ncc015_14000\point_cloud\iteration_8000\point_cloud.ply `
-  --cameras outputs\l2_3dgs_rade_las_init_1p5m_mv200_densify8k_int1000_ncc015_14000\cameras.json `
-  --images data\3DGS\L2_roma_mixed\images `
-  --out outputs\gsplat_quality_eval_l2_las_init_mv200_densify8k_int1000_ncc015_8000 `
-  --ids 0,8,16,24,32 `
-  --width 1280 `
-  --height 960
-```
-
-注意：上述 `tools/` 路径不在当前 `3DGS` 目录文件扫描结果中，可能位于上级工作区或另一路径。复现实验时应先确认 `tools` 目录存在。
-
-## 5. 典型工作流
-
-### 5.1 使用 COLMAP 图像训练标准 3DGS
-
-适用项目：`gaussian-splatting/`
-
-```bash
-cd gaussian-splatting
-python convert.py -s <image_project_dir> --resize
-python train.py -s <image_project_dir> -m <output_dir>
-python render.py -m <output_dir>
-python metrics.py -m <output_dir>
-```
-
-适用前提：
-
-- 输入数据已完成 COLMAP 或可通过 `convert.py` 调用 COLMAP。
-- 相机模型可转换为 SIMPLE_PINHOLE 或 PINHOLE。
-- CUDA、PyTorch 和 rasterizer 扩展可正常编译。
-
-### 5.2 使用 LAS/点云初始化大场景 3DGS
-
-适用项目：当前 L2 实验使用 `RaDe-GS/`。
-
-推荐原则来自本地实验：
-
-- 优先保证点云初始化与相机坐标系一致。
-- 对大场景使用较慢 densification/prune。
-- 不要过早 prune 尚未收敛的 Gaussian。
-- 对水面、车辆、船只等静态模型难以解释的区域考虑 mask 或降低权重。
-- 使用真实 splat renderer 评估，不用简单投影替代。
-
-### 5.3 训练 3DGS 视觉定位系统
-
-可选项目：
-
-- `SplatLoc/`：面向 RGB-D/AR 场景，重点是 3D descriptor field 和 2D-3D matching。
-- `gsplatloc/`：面向关键点描述子 grounding，重点是 XFeat/feature Gaussian/PnP/warp refinement。
-
-SplatLoc 典型流程：
-
-```bash
-cd SplatLoc
-conda env create -f environment.yml
-conda activate splatloc
-pip install git+https://github.com/NVlabs/tiny-cuda-nn/#subdirectory=bindings/torch
-cd submodules/diff-gaussian-rasterization
-pip install -e .
-
-cd ../..
-python train_decoder.py --config ./configs/replica_nerf/<scene>.yaml
-python train_gaussians.py --config ./configs/replica_nerf/<scene>.yaml
-python test.py --config ./configs/replica_nerf/<scene>.yaml --eval_pose --eval_rendering
-```
-
-GSplatLoc 典型流程：
-
-```bash
-cd gsplatloc
-conda create --name gsplatloc python=3.10
-conda activate gsplatloc
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install -r requirements.txt
-pip install submodules/diff-gaussian-rasterization
-pip install submodules/simple-knn
-
-python train.py -s data/DATASET_NAME -m output/OUTPUT_NAME --iterations 7000
-python loc_inference.py -m output/OUTPUT_NAME
-```
-
-### 5.4 使用 Nerfstudio 插件训练野外 3DGS
-
-适用项目：`nerfstudio/` + `splatfacto-w/`
-
-```bash
-cd nerfstudio
-pip install -e .
-
-cd ../splatfacto-w
-pip install -e .
-ns-install-cli
-
-ns-train splatfacto-w-light --data <PATH> <dataparser>
-```
-
-该路线适合图像曝光变化、动态行人/车辆、天空背景和非受控采集条件，但与当前 L2 实验的 RaDe-GS 路线不同。
-
-## 6. 依赖与环境注意事项
-
-### 6.1 CUDA 扩展
-
-目录内多个项目依赖 CUDA/C++ 扩展：
-
-- `diff-gaussian-rasterization`
-- `simple-knn`
-- `fused-ssim`
-- `warp-patch-ncc`
-- `tetra_triangulation`
-- `gsplat` runtime extension
-- `tiny-cuda-nn` bindings
-
-这些扩展对 PyTorch、CUDA Toolkit、MSVC/g++、Python 版本非常敏感。在 Windows 下，常见问题是找不到 `cl.exe` 或 CUDA/PyTorch ABI 不匹配。
-
-### 6.2 Python/PyTorch 版本不统一
-
-当前目录中各项目推荐环境并不一致：
-
-| 项目 | Python | PyTorch/CUDA 建议 |
-|---|---|---|
-| `gaussian-splatting` | 3.7.13 | PyTorch 1.12.1 + CUDA 11.6 |
-| `SplatLoc` | 3.7.13 | PyTorch 1.12.1 + CUDA 11.6 |
-| `gsplatloc` | 3.10 | README 示例为 PyTorch cu118 |
-| `RaDe-GS` | 3.12 | README 示例为 PyTorch cu130 |
-| `nerfstudio` | >=3.8 | README 示例为 PyTorch 2.1.2 + CUDA 11.8 |
-| `splatfacto-w` | 由 nerfstudio 决定 | `nerfstudio >= 1.1.0` |
-
-因此不建议把所有项目强行安装进同一个 conda 环境。更稳妥的方式是按项目创建独立环境。
-
-### 6.3 Windows 注意事项
-
-当前 L2 实验总结中提到 Windows/Torch checkpoint 兼容修复：
+在代码中，原始 3DGS 的参数集中在 `gaussian-splatting/scene/gaussian_model.py`：
 
 ```python
-torch.load(checkpoint, weights_only=False)
+class GaussianModel:
+    self._xyz           # Gaussian center, μ
+    self._features_dc   # SH DC color
+    self._features_rest # higher-order SH coefficients
+    self._scaling       # log scale
+    self._rotation      # quaternion
+    self._opacity       # inverse-sigmoid opacity parameter
 ```
 
-位置记录为：
+### 2.2 协方差参数化
+
+3DGS 不直接优化完整协方差矩阵，而是使用尺度和旋转构造：
+
+$$
+\boldsymbol{\Sigma}_i = \mathbf{R}_i \mathbf{S}_i \mathbf{S}_i^\top \mathbf{R}_i^\top
+$$
+
+其中 $\mathbf{S}_i = \operatorname{diag}(s_x, s_y, s_z)$，$\mathbf{R}_i$ 来自四元数。
+
+代码对应：
+
+```python
+# gaussian-splatting/scene/gaussian_model.py
+def build_covariance_from_scaling_rotation(scaling, scaling_modifier, rotation):
+    L = build_scaling_rotation(scaling_modifier * scaling, rotation)
+    actual_covariance = L @ L.transpose(1, 2)
+    symm = strip_symmetric(actual_covariance)
+    return symm
+
+self.scaling_activation = torch.exp
+self.rotation_activation = torch.nn.functional.normalize
+```
+
+这里优化变量是 unconstrained 的 `_scaling` 和 `_rotation`。`torch.exp` 保证尺度为正，`normalize` 保证四元数单位化。
+
+### 2.3 PLY 中的字段
+
+训练结果通常保存为 PLY，每个顶点对应一个 Gaussian：
 
 ```text
-3DGS/RaDe-GS/train.py
+x, y, z
+f_dc_*
+f_rest_*
+opacity
+scale_*
+rot_*
 ```
 
-同时，viewer 在 Windows 下启动需要 Visual Studio 编译器环境，否则 gsplat runtime extension 可能找不到 `cl`。如果要复现 viewer，应确认：
+代码对应：
 
-- conda 环境激活正确。
-- Visual Studio Build Tools 已安装。
-- `cl.exe` 在当前终端 PATH 中可见。
-- PyTorch CUDA runtime 与本机驱动兼容。
-- 端口 `8082` 或训练 viewer 端口未被占用。
+```python
+# gaussian-splatting/scene/gaussian_model.py
+def construct_list_of_attributes(self):
+    l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
+    ...
+    l.append('opacity')
+    for i in range(self._scaling.shape[1]):
+        l.append('scale_{}'.format(i))
+    for i in range(self._rotation.shape[1]):
+        l.append('rot_{}'.format(i))
+```
 
-## 7. 质量评估指标
+---
 
-当前目录中常见指标包括：
+## 3. 可微 Gaussian Splatting 渲染
 
-| 指标 | 含义 | 注意事项 |
+### 3.1 投影与屏幕空间 footprint
+
+三维点经相机外参和内参投影：
+
+$$
+\mathbf{x}_c = \mathbf{R}_{cw}\boldsymbol{\mu} + \mathbf{t}_{cw}, \quad
+\mathbf{u} = \pi(\mathbf{x}_c)
+$$
+
+协方差通过投影 Jacobian $\mathbf{J}$ 近似传播到屏幕空间：
+
+$$
+\boldsymbol{\Sigma}_{2D} = \mathbf{J}\mathbf{W}\boldsymbol{\Sigma}_{3D}\mathbf{W}^\top\mathbf{J}^\top
+$$
+
+其中 $\mathbf{W}$ 是 world-to-camera 旋转。屏幕上每个 Gaussian 成为一个椭圆 splat，rasterizer 按 tile 找到可能覆盖的像素。
+
+原始实现的渲染入口：
+
+```python
+# gaussian-splatting/gaussian_renderer/__init__.py
+def render(viewpoint_camera, pc, pipe, bg_color, scaling_modifier=1.0, ...):
+    screenspace_points = torch.zeros_like(
+        pc.get_xyz, requires_grad=True, device="cuda"
+    )
+
+    raster_settings = GaussianRasterizationSettings(
+        image_height=int(viewpoint_camera.image_height),
+        image_width=int(viewpoint_camera.image_width),
+        tanfovx=math.tan(viewpoint_camera.FoVx * 0.5),
+        tanfovy=math.tan(viewpoint_camera.FoVy * 0.5),
+        viewmatrix=viewpoint_camera.world_view_transform,
+        projmatrix=viewpoint_camera.full_proj_transform,
+        sh_degree=pc.active_sh_degree,
+        campos=viewpoint_camera.camera_center,
+    )
+```
+
+### 3.2 颜色模型：Spherical Harmonics
+
+视角相关颜色用球谐函数表示：
+
+$$
+\mathbf{c}_i(\mathbf{d}) =
+\sum_{\ell=0}^{L}\sum_{m=-\ell}^{\ell}
+\mathbf{k}_{i,\ell m}Y_{\ell m}(\mathbf{d})
+$$
+
+其中 $\mathbf{d}$ 是从相机到 Gaussian 的方向。代码中可以选择在 Python 侧计算 SH，也可以让 rasterizer 内部计算：
+
+```python
+# gaussian-splatting/gaussian_renderer/__init__.py
+if pipe.convert_SHs_python:
+    shs_view = pc.get_features.transpose(1, 2).view(-1, 3, (pc.max_sh_degree+1)**2)
+    dir_pp = pc.get_xyz - viewpoint_camera.camera_center.repeat(pc.get_features.shape[0], 1)
+    dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
+    sh2rgb = eval_sh(pc.active_sh_degree, shs_view, dir_pp_normalized)
+    colors_precomp = torch.clamp_min(sh2rgb + 0.5, 0.0)
+else:
+    shs = pc.get_features
+```
+
+### 3.3 Alpha compositing
+
+对同一像素，按照深度从近到远合成：
+
+$$
+\mathbf{C} = \sum_{i=1}^{N} T_i \alpha_i \mathbf{c}_i,\quad
+T_i = \prod_{j=1}^{i-1}(1-\alpha_j)
+$$
+
+其中 $T_i$ 是第 $i$ 个 Gaussian 前方的透射率。这个公式是 3DGS 可微 rasterization 的核心，与 NeRF 的体渲染形式相似，但积分对象从连续 ray samples 变成显式 splat primitive。
+
+---
+
+## 4. 训练目标与优化循环
+
+### 4.1 RGB 重建损失
+
+原始 3DGS 的基本损失是 L1 与 DSSIM 加权：
+
+$$
+\mathcal{L}_{rgb} =
+(1-\lambda)\|\hat{\mathbf{I}}-\mathbf{I}\|_1
++ \lambda(1-\operatorname{SSIM}(\hat{\mathbf{I}},\mathbf{I}))
+$$
+
+代码对应：
+
+```python
+# gaussian-splatting/train.py
+Ll1 = l1_loss(image, gt_image)
+ssim_value = ssim(image, gt_image)
+loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim_value)
+loss.backward()
+```
+
+### 4.2 主训练循环
+
+```python
+# gaussian-splatting/train.py
+for iteration in range(first_iter, opt.iterations + 1):
+    gaussians.update_learning_rate(iteration)
+
+    if iteration % 1000 == 0:
+        gaussians.oneupSHdegree()
+
+    viewpoint_cam = random_training_camera()
+    render_pkg = render(viewpoint_cam, gaussians, pipe, bg)
+
+    image = render_pkg["render"]
+    loss = rgb_loss(image, viewpoint_cam.original_image)
+    loss.backward()
+
+    if iteration < opt.densify_until_iter:
+        gaussians.add_densification_stats(...)
+        if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
+            gaussians.densify_and_prune(...)
+
+    gaussians.optimizer.step()
+    gaussians.optimizer.zero_grad()
+```
+
+### 4.3 优化变量与学习率组
+
+```python
+# gaussian-splatting/scene/gaussian_model.py
+l = [
+    {'params': [self._xyz], 'lr': position_lr, "name": "xyz"},
+    {'params': [self._features_dc], 'lr': feature_lr, "name": "f_dc"},
+    {'params': [self._features_rest], 'lr': feature_lr / 20.0, "name": "f_rest"},
+    {'params': [self._opacity], 'lr': opacity_lr, "name": "opacity"},
+    {'params': [self._scaling], 'lr': scaling_lr, "name": "scaling"},
+    {'params': [self._rotation], 'lr': rotation_lr, "name": "rotation"},
+]
+```
+
+位置学习率使用指数调度：
+
+$$
+\eta(t) = \eta_{init}\left(\frac{\eta_{final}}{\eta_{init}}\right)^{t/T}
+$$
+
+代码通过 `get_expon_lr_func(...)` 构造调度函数，并在每次迭代调用 `update_learning_rate(iteration)`。
+
+---
+
+## 5. Densification 与 Pruning
+
+### 5.1 屏幕空间梯度统计
+
+3DGS 使用屏幕空间位置梯度判断哪些 Gaussian 对图像误差敏感：
+
+$$
+g_i = \left\|\frac{\partial\mathcal{L}}{\partial \boldsymbol{\mu}_{i,2D}}\right\|_2
+$$
+
+代码对应：
+
+```python
+# gaussian-splatting/scene/gaussian_model.py
+def add_densification_stats(self, viewspace_point_tensor, update_filter):
+    self.xyz_gradient_accum[update_filter] += torch.norm(
+        viewspace_point_tensor.grad[update_filter, :2], dim=-1, keepdim=True
+    )
+    self.denom[update_filter] += 1
+```
+
+平均梯度：
+
+$$
+\bar{g}_i = \frac{\sum_t g_{i,t}}{n_i}
+$$
+
+### 5.2 Clone 与 Split
+
+当梯度高且 Gaussian 较小，使用 clone：
+
+```python
+# gaussian-splatting/scene/gaussian_model.py
+selected = norm(grads) >= grad_threshold
+selected &= max(get_scaling) <= percent_dense * scene_extent
+new_xyz = self._xyz[selected]
+```
+
+当梯度高且 Gaussian 较大，使用 split：
+
+```python
+selected = padded_grad >= grad_threshold
+selected &= max(get_scaling) > percent_dense * scene_extent
+
+samples = torch.normal(mean=0, std=get_scaling[selected])
+new_xyz = R @ samples + get_xyz[selected]
+new_scaling = log(get_scaling[selected] / (0.8 * N))
+```
+
+对应数学形式：
+
+$$
+\boldsymbol{\mu}' = \boldsymbol{\mu} + \mathbf{R}\boldsymbol{\epsilon},
+\quad
+\boldsymbol{\epsilon}\sim\mathcal{N}(\mathbf{0},\operatorname{diag}(\mathbf{s})^2)
+$$
+
+### 5.3 Pruning
+
+低透明度、屏幕空间过大或世界空间过大的 Gaussian 被删除：
+
+```python
+# gaussian-splatting/scene/gaussian_model.py
+prune_mask = (self.get_opacity < min_opacity).squeeze()
+if max_screen_size:
+    big_points_vs = self.max_radii2D > max_screen_size
+    big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+    prune_mask = prune_mask | big_points_vs | big_points_ws
+self.prune_points(prune_mask)
+```
+
+---
+
+## 6. 原始 3DGS 项目：训练、渲染、评估
+
+### 6.1 模块组成
+
+| 模块 | 文件 | 职责 |
 |---|---|---|
-| PSNR | 基于 MSE 的像素误差指标 | 对曝光、错位、动态物体非常敏感 |
-| SSIM | 结构相似性 | 更能反映局部结构，但仍受 mask/分辨率影响 |
-| LPIPS | 感知相似性 | 依赖网络特征，适合感知质量对比 |
-| MAE | 平均绝对误差 | 直观但不区分结构与颜色来源 |
-| Pose error | 定位旋转/平移误差 | SplatLoc/GSplatLoc 更关注 |
-| F-score / Chamfer-like | mesh 几何评估 | RaDe-GS/DTU/TnT 相关 |
+| 模型表示 | `gaussian-splatting/scene/gaussian_model.py` | Gaussian 参数、PLY 读写、densification |
+| 场景管理 | `gaussian-splatting/scene/__init__.py` | 加载相机、点云和训练/测试视角 |
+| 数据读取 | `gaussian-splatting/scene/dataset_readers.py` | COLMAP、NeRF synthetic 数据解析 |
+| 渲染器 | `gaussian-splatting/gaussian_renderer/__init__.py` | 调用 CUDA rasterizer |
+| 训练入口 | `gaussian-splatting/train.py` | 随机视角训练、loss、density control |
+| 渲染入口 | `gaussian-splatting/render.py` | 输出 train/test 渲染图 |
+| 评价入口 | `gaussian-splatting/metrics.py` | PSNR、SSIM、LPIPS |
 
-L2 实验中已经指出，PSNR 95 dB 对真实大场景 3DGS 几乎等价于逐像素完全一致，不是合理目标。对有水面、动态目标、相机-LiDAR 标定误差和单航线视角的大场景，当前 `23.04 dB / 0.91 SSIM` 属于可解释结果；后续优化可现实地争取 24-26 dB，而不是追求 95 dB。
+### 6.2 数据模型
 
-## 8. 当前目录的主要风险与边界
+COLMAP 数据读取后被转换为：
 
-1. 多项目混合，环境互相不兼容。需要按子项目隔离 conda 环境。
-2. 多个上游项目包含大量第三方 submodule、viewer、HTML 文档和编译产物，不能将文件数量直接理解为核心业务代码规模。
-3. L2 实验依赖的 `tools/`、`data/`、`outputs/` 路径可能位于当前目录之外或未纳入当前扫描，需要复现前确认。
-4. 大场景 3DGS 对坐标系、点云初始化、相机标定非常敏感。
-5. 水面、车辆、船只等动态/反射对象不适合直接由静态 3DGS 完全解释。
-6. 训练分辨率自动缩放会损失部分高频结构，例如桥索、栏杆和路面标线。
-7. Densification 不是越频繁越好。当前 L2 实验表明大场景中 `interval=250` 反而不如 `interval=1000`。
-8. Viewer 黑屏不一定表示模型无效，也可能是初始相机位置不在训练相机附近、路径含中文/空格、端口或编译环境问题。
-
-## 9. 后续优化建议
-
-面向当前 L2 桥梁实验，优先级建议如下：
-
-1. 对车辆、船只等动态目标增加 mask。
-2. 对水面区域增加 mask 或降低损失权重，避免水面反射主导优化。
-3. 做曝光、白平衡和色彩一致化预处理。
-4. 在 `densification_interval=1000` 附近做小范围网格实验，而不是回到高频 densification。
-5. 测试 `regularization_from_iter=8500/9000` 和 `lambda_multi_view_ncc=0.05/0.1`。
-6. 在显存允许时测试更高训练分辨率，但 RTX 3060 12GB 可能需要更保守的 batch、图像缩放或分块策略。
-7. 如果可以补采数据，优先增加侧向、环绕和高度变化视角，这通常比单纯延长训练更有效。
-8. 固化评估脚本，将 5-view 和 all-35 评估命令、输出路径和指标表自动化，减少手工比较误差。
-
-## 10. 建议的目录使用方式
-
-如果目标是继续 L2 大场景重建：
-
-- 主要工作目录：`RaDe-GS/`
-- 主要模型输出：`outputs/l2_3dgs_*`
-- 评估工具：`gsplat` 真实 splat 渲染
-- 关键数据：`data/3DGS/L2_roma_mixed*` 和 `data/suspension_bridge.las`
-
-如果目标是视觉定位研究：
-
-- RGB-D/AR 定位路线：`SplatLoc/`
-- XFeat/关键点描述子路线：`gsplatloc/`
-
-如果目标是通用 3DGS 基线或 COLMAP 图像训练：
-
-- 使用 `gaussian-splatting/`
-
-如果目标是 Nerfstudio 生态或野外照片集：
-
-- 使用 `nerfstudio/` + `splatfacto-w/`
-
-如果目标是高性能 rasterization、评估或二次开发：
-
-- 使用 `gsplat/`
-
-## 11. 快速命令索引
-
-```bash
-# 原始 3DGS 训练
-cd gaussian-splatting
-python train.py -s <dataset> -m <output_dir>
-
-# 原始 3DGS 渲染与指标
-python render.py -m <output_dir>
-python metrics.py -m <output_dir>
-
-# RaDe-GS 训练
-cd RaDe-GS
-python train.py -s <dataset> -m <output_dir> --eval
-
-# RaDe-GS 渲染与评估
-python render.py -m <output_dir>
-python metric.py -m <output_dir>
-
-# RaDe-GS mesh extraction
-python mesh_extract.py -m <output_dir>
-
-# SplatLoc 训练与评估
-cd SplatLoc
-python train_decoder.py --config ./configs/replica_nerf/<scene>.yaml
-python train_gaussians.py --config ./configs/replica_nerf/<scene>.yaml
-python test.py --config ./configs/replica_nerf/<scene>.yaml --eval_pose --eval_rendering
-
-# GSplatLoc 训练与定位
-cd gsplatloc
-python train.py -s data/DATASET_NAME -m output/OUTPUT_NAME --iterations 7000
-python loc_inference.py -m output/OUTPUT_NAME
-
-# Nerfstudio 训练
-cd nerfstudio
-ns-train nerfacto --data <data_path>
-
-# Splatfacto-W 插件训练
-cd splatfacto-w
-ns-train splatfacto-w-light --data <PATH> <dataparser>
+```python
+CameraInfo(uid, R, T, FovY, FovX, image, image_path, image_name, width, height)
+SceneInfo(point_cloud, train_cameras, test_cameras, nerf_normalization, ply_path)
 ```
 
-## 12. 结论
+Gaussian 初始化由 `create_from_pcd(...)` 完成：
 
-当前 `3DGS` 目录是一个多项目 3D Gaussian Splatting 工作区，既包含原始 3DGS 基线，也包含几何增强、定位增强、高性能 rasterization 和 Nerfstudio 插件路线。对当前已有 L2 suspension bridge 实验而言，最有实证价值的路线是 `RaDe-GS` 训练、完整 LAS 点云初始化、稀疏 densification、`gsplat` 真实 splat 评估。
+```python
+fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
+fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+dist2 = distCUDA2(points)
+scales = torch.log(torch.sqrt(dist2))[..., None].repeat(1, 3)
+opacities = inverse_sigmoid(0.1 * ones)
+```
 
-当前最佳 L2 模型为：
+初始化尺度来自点云最近邻距离，含义是让初始 Gaussian 大小与稀疏点云局部间距一致。
+
+---
+
+## 7. RaDe-GS：深度与几何一致性
+
+RaDe-GS 在 3DGS 基础上强化几何可解释性。其渲染器不仅返回 RGB，还返回 expected depth、median depth、alpha mask 和 normal。
+
+### 7.1 渲染输出扩展
+
+```python
+# RaDe-GS/gaussian_renderer/__init__.py
+rendered_image, radii, expected_depth, median_depth, alpha, normal = rasterizer(...)
+
+return {
+    "render": rendered_image,
+    "mask": rendered_alpha,
+    "expected_depth": rendered_expected_depth,
+    "median_depth": rendered_median_depth,
+    "normal": rendered_normal,
+}
+```
+
+expected depth 可理解为 alpha 权重下的期望深度：
+
+$$
+D_{exp}(\mathbf{u}) =
+\frac{\sum_i T_i\alpha_i z_i}{\sum_i T_i\alpha_i+\epsilon}
+$$
+
+median depth 更接近累积透明度达到一定阈值时的表面深度，通常对厚重 splat 或遮挡边界更稳健。
+
+### 7.2 Depth-to-normal 一致性
+
+给定深度图 $D(u,v)$ 和相机射线方向 $\mathbf{r}(u,v)$，可反投影得到三维点：
+
+$$
+\mathbf{P}(u,v) = D(u,v)\mathbf{r}(u,v)
+$$
+
+局部法线由相邻点叉乘得到：
+
+$$
+\mathbf{n}_D =
+\frac{(\mathbf{P}_{u+1,v}-\mathbf{P}_{u-1,v}) \times
+(\mathbf{P}_{u,v+1}-\mathbf{P}_{u,v-1})}
+\left\|(\mathbf{P}_{u+1,v}-\mathbf{P}_{u-1,v}) \times
+(\mathbf{P}_{u,v+1}-\mathbf{P}_{u,v-1})\right\|}
+$$
+
+代码对应：
+
+```python
+# RaDe-GS/utils/graphics_utils.py
+normal_map = torch.nn.functional.normalize(torch.cross(dy, dx, dim=1), dim=1)
+```
+
+训练损失：
+
+$$
+\mathcal{L}_{normal} = 1 - \langle \mathbf{n}_{render}, \mathbf{n}_{depth}\rangle
+$$
+
+```python
+# RaDe-GS/train.py
+normal_error_map = 1 - torch.linalg.vecdot(rendered_normal, depth_normal, dim=0)
+depth_normal_loss = normal_error_map.mean()
+```
+
+### 7.3 多视图 NCC 与几何误差
+
+RaDe-GS 使用 patch warping 做多视图光度一致性。设参考视角 patch 为 $P_r$，邻近视角 warp 后 patch 为 $P_s$，NCC 为：
+
+$$
+\operatorname{NCC}(P_r,P_s)=
+\frac{\sum (P_r-\bar{P}_r)(P_s-\bar{P}_s)}
+{\sqrt{\sum(P_r-\bar{P}_r)^2}\sqrt{\sum(P_s-\bar{P}_s)^2}}
+$$
+
+损失：
+
+$$
+\mathcal{L}_{ncc} = \operatorname{clamp}(1-\operatorname{NCC},0,2)
+$$
+
+代码对应：
+
+```python
+# RaDe-GS/utils/loss_utils.py
+cc, valid_mask = warp_patch_ncc.warp_patch_ncc(
+    depth_select, normal_select, ...
+)
+ncc = torch.clamp(1 - cc, 0.0, 2.0)
+ncc_loss = ncc[ncc_mask].mean()
+```
+
+训练总损失：
+
+$$
+\mathcal{L} =
+\mathcal{L}_{rgb}
++ \lambda_n\mathcal{L}_{normal}
++ \lambda_{ncc}\mathcal{L}_{ncc}
++ \lambda_g\mathcal{L}_{geo}
+$$
+
+```python
+# RaDe-GS/train.py
+loss = (
+    rgb_loss
+    + opt.lambda_depth_normal * depth_normal_loss
+    + opt.lambda_multi_view_ncc * ncc_loss
+    + opt.lambda_multi_view_geo * geo_loss
+)
+```
+
+### 7.4 Mesh extraction
+
+RaDe-GS 提供 `mesh_extract.py`、`mesh_extract_tnt.py` 和 `mesh_extract_tetrahedra.py`。其中 `integrate(...)` 和 `sample_depth(...)` 允许在空间点或 tetrahedra 顶点处评估 Gaussian 的 alpha/depth 信息，用于从 splat 表示转为 mesh 表示。
+
+---
+
+## 8. gsplat：高性能 Rasterization API
+
+`gsplat` 将 Gaussian rasterization 抽象为 Python API，输入 tensor 直接对应 Gaussian 参数：
+
+```python
+# gsplat/gsplat/rendering.py
+def rasterization(
+    means,      # [..., N, 3]
+    quats,      # [..., N, 4]
+    scales,     # [..., N, 3]
+    opacities,  # [..., N]
+    colors,     # [..., N, D] or SH coefficients
+    viewmats,
+    Ks,
+    width,
+    height,
+    render_mode="RGB",
+    packed=True,
+    sparse_grad=False,
+    camera_model="pinhole",
+):
+    ...
+```
+
+### 8.1 Packed mode
+
+`packed=True` 时，中间可见 Gaussian-camera pair 被压缩为 sparse/packed 结构，降低大场景和多相机场景的内存占用：
 
 ```text
-outputs/l2_3dgs_rade_las_init_1p5m_mv200_densify8k_int1000_ncc015_14000/point_cloud/iteration_8000/point_cloud.ply
+non-packed: [batch, camera, gaussian, ...]
+packed:     [nnz, ...]
 ```
 
-其全 35 训练视角评估为：
+这对应稀疏可见性假设：任一相机实际只看到全部 Gaussian 的一部分。
+
+### 8.2 Render mode
+
+`render_mode` 控制输出通道：
+
+| 模式 | 含义 |
+|---|---|
+| `RGB` | 颜色渲染 |
+| `D` / `ED` | 深度或期望深度 |
+| `RGB+D` / `RGB+ED` | 同时输出颜色和深度 |
+| LiDAR/eval3d 相关模式 | 支持 3D ray / spinning LiDAR 渲染 |
+
+这使 `gsplat` 不只是 viewer 后端，也可作为训练、评估、定位或传感器仿真的基础 rasterizer。
+
+---
+
+## 9. SplatLoc：3DGS 视觉定位
+
+SplatLoc 将 3DGS 从“图像重建表示”扩展为“定位用 3D feature field”。核心思想是：为 Gaussian 学习 3D descriptor，使 2D 图像特征可以与 3D Gaussian 匹配，从而恢复相机位姿。
+
+### 9.1 Feature decoder
+
+3D 点 $\mathbf{x}$ 经位置编码后输入 MLP：
+
+$$
+\mathbf{f}_{3D}(\mathbf{x}) =
+\operatorname{MLP}(\gamma(\mathbf{x}))
+$$
+
+其中 $\gamma$ 可以是 HashGrid、frequency encoding 或 identity encoding。
+
+代码对应：
+
+```python
+# SplatLoc/models/decoders.py
+class FeatureDecoder(nn.Module):
+    ...
+```
+
+decoder 训练使用 cosine loss：
+
+$$
+\mathcal{L}_{cos} = 1 -
+\frac{\mathbf{f}_{pred}^\top\mathbf{f}_{gt}}
+{\|\mathbf{f}_{pred}\|\|\mathbf{f}_{gt}\|}
+$$
+
+```python
+# SplatLoc/train_decoder.py
+def cos_loss(network_output, gt):
+    return 1 - cosine_similarity(network_output, gt)
+```
+
+### 9.2 Gaussian 训练中的 descriptor 与 marker
+
+SplatLoc 的 Gaussian renderer 返回：
+
+```python
+render_pkg["render"]      # RGB
+render_pkg["kp_prob"]     # keypoint probability / marker
+render_pkg["depth"]       # depth
+render_pkg["opacity"]     # opacity
+```
+
+训练中包含 marker loss、descriptor loss、RGB/depth mapping loss 和 primitive regularization：
+
+```python
+# SplatLoc/train_gaussians.py
+loss_mapping += get_loss_marker(config, marker, viewpoint.kp_score)
+loss_mapping += get_loss_descriptor(config, pred_descriptor, gt_descriptor)
+loss_mapping += get_loss_mapping(config, image, depth, viewpoint, opacity)
+```
+
+marker 约束用于筛选更适合作为 3D landmark 的 Gaussian。
+
+### 9.3 2D-3D matching 与 PnP
+
+SplatLoc 在查询图像中提取 2D keypoint descriptor，在 3D Gaussian 中查询 descriptor，得到 2D-3D 对应：
+
+```python
+# SplatLoc/utils/match_utils.py
+similarity = torch.matmul(descriptors1.t(), descriptors2)
+matches = linear_sum_assignment(-similarity)
+```
+
+位姿由 PnP 求解：
+
+```python
+# SplatLoc/test.py
+def solve_pose(kp_2d, kp_3d, intrinsics):
+    cv2.solvePnPRansac(kp_3d, kp_2d, intrinsics, ...)
+```
+
+数学形式：
+
+$$
+\min_{\mathbf{R},\mathbf{t}}
+\sum_i
+\left\|
+\mathbf{u}_i -
+\pi\left(\mathbf{K}(\mathbf{R}\mathbf{X}_i+\mathbf{t})\right)
+\right\|^2
+$$
+
+---
+
+## 10. GSplatLoc：关键点描述子驱动的定位
+
+GSplatLoc 同样将 descriptor grounding 到 3DGS，但更强调 XFeat sparse keypoint 与 Gaussian feature 的直接匹配。
+
+### 10.1 2D-3D 对应搜索
+
+```python
+# gsplatloc/utils/loc_utils.py
+image_features = F.normalize(image_features, p=2, dim=1)
+gaussian_feat = F.normalize(gaussian_feat, p=2, dim=1)
+similarity = torch.mm(image_features, chunk.t())
+```
+
+使用 cosine similarity：
+
+$$
+s_{ij} =
+\frac{\mathbf{f}^{2D}_i \cdot \mathbf{f}^{3D}_j}
+{\|\mathbf{f}^{2D}_i\|\|\mathbf{f}^{3D}_j\|}
+$$
+
+取最相似的 Gaussian 作为 2D keypoint 的 3D 对应。
+
+### 10.2 PnP-RANSAC 初值
+
+```python
+# gsplatloc/loc_inference.py
+_, R, t, _ = cv2.solvePnPRansac(
+    matched_3d,
+    matched_2d,
+    K,
+    distCoeffs=None,
+    iterationsCount=args.ransac_iters,
+)
+```
+
+RANSAC 处理错误匹配，输出初始位姿。
+
+### 10.3 Differentiable warp refinement
+
+PnP 后，GSplatLoc 渲染当前估计位姿下的图像和深度，再通过可微 warping 优化位姿：
+
+```python
+# gsplatloc/warping/warping_loss.py
+warp = pose @ from_cam_tensor_to_w2c(torch.cat([quat_opt, t_opt], dim=0)).inverse()
+warped_image = differentiable_warp(rendered_image, depth, warp, K)
+loss = F.mse_loss(warped_image, query_image)
+```
+
+优化目标：
+
+$$
+\min_{\Delta\mathbf{q},\Delta\mathbf{t}}
+\left\|
+\operatorname{warp}
+(\hat{\mathbf{I}}, \hat{\mathbf{D}}, \Delta\mathbf{T})
+- \mathbf{I}_{query}
+\right\|_2^2
+$$
+
+---
+
+## 11. Nerfstudio 与 Splatfacto-W
+
+Nerfstudio 提供统一的训练框架、dataparser、viewer 和 CLI。`splatfacto-w` 是基于 Nerfstudio 的 in-the-wild Gaussian Splatting 插件。
+
+### 11.1 插件注册
+
+```toml
+# splatfacto-w/pyproject.toml
+[project.entry-points.'nerfstudio.method_configs']
+splatfactow = 'splatfactow.splatfactow_config:splatfactow_config'
+splatfactow_light = 'splatfactow.splatfactow_config:splatfactow_light_config'
+
+[project.entry-points.'nerfstudio.dataparser_configs']
+splatfactow_dataparser = 'splatfactow.nerfw_dataparser:splatfactow_dataparser'
+```
+
+这使方法可以通过 `ns-train splatfacto-w ...` 调用。
+
+### 11.2 In-the-wild 建模
+
+野外图像存在曝光变化、动态物体、天空背景和 transient object。Splatfacto-W 的扩展包括：
+
+- appearance modeling：为不同图像建模外观差异；
+- background modeling：处理远景和天空区域；
+- alpha loss：约束 sky 等区域不被前景 Gaussian 占据；
+- robust mask：降低 transient object 对静态场景的影响。
+
+这些设计与标准 3DGS 的主要区别在于：训练目标不再假设所有像素都来自同一个静态、光照一致的场景。
+
+---
+
+## 12. 技术路线对比
+
+| 维度 | 原始 3DGS | RaDe-GS | SplatLoc | GSplatLoc | Splatfacto-W |
+|---|---|---|---|---|---|
+| 主要目标 | novel view synthesis | 几何/mesh/深度一致性 | AR 视觉定位 | 关键点定位 | 野外图像重建 |
+| 优化对象 | RGB + SH + opacity + geometry | RGB + depth + normal + NCC | RGB + descriptor + marker | RGB/feature + pose | RGB + appearance/transient |
+| 核心输出 | Gaussian PLY、rendered images | Gaussian + depth/normal/mesh | camera pose、landmark selection | refined camera pose | robust Gaussian scene |
+| 关键损失 | L1 + DSSIM | RGB + normal + NCC + geo | marker/descriptor/rendering | feature matching + warp | robust photometric losses |
+| 典型入口 | `train.py` | `train.py`, `mesh_extract.py` | `train_decoder.py`, `test.py` | `train.py`, `loc_inference.py` | `ns-train splatfacto-w` |
+
+---
+
+## 13. 算法伪代码
 
 ```text
-PSNR = 23.0417
-SSIM = 0.9097
-MAE  = 0.04246
+输入:
+  多视角图像、相机参数、初始点云或 SfM 点云
+
+初始化:
+  1. 从点云创建 Gaussian centers μ
+  2. 用最近邻距离初始化 scale
+  3. 用 RGB 初始化 SH DC
+  4. 初始化 opacity 和 rotation
+
+训练循环:
+  for iteration = 1..T:
+    1. 随机选择训练相机
+    2. 投影 3D Gaussian 到屏幕空间
+    3. rasterize 得到 RGB / depth / normal / feature
+    4. 计算损失:
+       - 原始 3DGS: L1 + DSSIM
+       - RaDe-GS: RGB + normal + NCC + geometry
+       - 定位扩展: descriptor + marker + PnP/warp related terms
+    5. 反向传播更新 Gaussian 参数
+    6. 周期性执行 densification:
+       - 高梯度小 Gaussian: clone
+       - 高梯度大 Gaussian: split
+       - 低 opacity 或过大 Gaussian: prune
+    7. 保存 PLY / checkpoint / evaluation render
+
+推理:
+  - 渲染任务: 输入新相机位姿，输出 novel view
+  - 几何任务: 输出 depth/normal/mesh
+  - 定位任务: 2D feature ↔ 3D Gaussian feature matching，PnP + refinement
 ```
 
-从现有实验看，继续优化的关键不是单纯增加 iteration，而是处理动态/水面区域、改善颜色一致性、控制大场景 densification/prune 时机，以及在数据层面增加更丰富的视角覆盖。
+---
+
+## 14. 参考文献
+
+1. Kerbl, B., Kopanas, G., Leimkuehler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *ACM Transactions on Graphics*.
+2. Zhang, B., Fang, C., Shrestha, R., Liang, Y., Long, X., & Tan, P. RaDe-GS: Rasterizing Depth in Gaussian Splatting.
+3. Ye, V., Li, R., Kerr, J., et al. (2025). gsplat: An Open-Source Library for Gaussian Splatting. *Journal of Machine Learning Research*.
+4. Zhai, H., Zhang, X., Zhao, B., et al. (2025). SplatLoc: 3D Gaussian Splatting-based Visual Localization for Augmented Reality. *IEEE TVCG*.
+5. Sidorov, G., Mohrat, M., Gridusov, D., Rakhimov, R., & Kolyubin, S. (2025). GSplatLoc: Grounding Keypoint Descriptors into 3D Gaussian Splatting for Improved Visual Localization. *IROS*.
