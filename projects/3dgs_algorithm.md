@@ -788,8 +788,13 @@ splatfactow_dataparser = 'splatfactow.nerfw_dataparser:splatfactow_dataparser'
 
 ## 14. 参考文献
 
-1. Kerbl, B., Kopanas, G., Leimkuehler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *ACM Transactions on Graphics*.
-2. Zhang, B., Fang, C., Shrestha, R., Liang, Y., Long, X., & Tan, P. RaDe-GS: Rasterizing Depth in Gaussian Splatting.
-3. Ye, V., Li, R., Kerr, J., et al. (2025). gsplat: An Open-Source Library for Gaussian Splatting. *Journal of Machine Learning Research*.
-4. Zhai, H., Zhang, X., Zhao, B., et al. (2025). SplatLoc: 3D Gaussian Splatting-based Visual Localization for Augmented Reality. *IEEE TVCG*.
-5. Sidorov, G., Mohrat, M., Gridusov, D., Rakhimov, R., & Kolyubin, S. (2025). GSplatLoc: Grounding Keypoint Descriptors into 3D Gaussian Splatting for Improved Visual Localization. *IROS*.
+以下条目优先采用正式发表版本；尚未正式出版或以项目插件形式发布的工作保留 arXiv / 项目页信息。
+
+1. Kerbl, B., Kopanas, G., Leimkuehler, T., & Drettakis, G. (2023). 3D Gaussian Splatting for Real-Time Radiance Field Rendering. *ACM Transactions on Graphics*, 42(4). [DOI:10.1145/3592433](https://doi.org/10.1145/3592433)
+2. Zhang, B., Fang, C., Shrestha, R., Liang, Y., Long, X., & Tan, P. (2026). RaDe-GS: Rasterizing Depth in Gaussian Splatting. *ACM Transactions on Graphics*, 45(2), 1-14. [DOI:10.1145/3789201](https://doi.org/10.1145/3789201), [arXiv:2406.01467](https://arxiv.org/abs/2406.01467)
+3. Ye, V., Li, R., Kerr, J., Turkulainen, M., Yi, B., Pan, Z., Seiskari, O., Ye, J., Hu, J., Tancik, M., & Kanazawa, A. (2025). gsplat: An Open-Source Library for Gaussian Splatting. *Journal of Machine Learning Research*, 26(34), 1-17. [JMLR](https://www.jmlr.org/papers/v26/24-1476.html)
+4. Zhai, H., Zhang, X., Zhao, B., Li, H., He, Y., Cui, Z., Bao, H., & Zhang, G. (2025). SplatLoc: 3D Gaussian Splatting-based Visual Localization for Augmented Reality. *IEEE Transactions on Visualization and Computer Graphics*, 31(5), 3591-3601. [DOI:10.1109/TVCG.2025.3549563](https://doi.org/10.1109/TVCG.2025.3549563)
+5. Sidorov, G., Mohrat, M., Gridusov, D., Rakhimov, R., & Kolyubin, S. (2025). GSplatLoc: Grounding Keypoint Descriptors into 3D Gaussian Splatting for Improved Visual Localization. In *2025 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)*, 12601-12607. [DOI:10.1109/IROS60139.2025.11246406](https://doi.org/10.1109/IROS60139.2025.11246406)
+6. Tancik, M., Weber, E., Ng, E., Li, R., Yi, B., Kerr, J., Wang, T., Kristoffersen, A., Austin, J., Salahi, K., Ahuja, A., McAllister, D., & Kanazawa, A. (2023). Nerfstudio: A Modular Framework for Neural Radiance Field Development. In *ACM SIGGRAPH 2023 Conference Proceedings*. [DOI:10.1145/3588432.3591516](https://doi.org/10.1145/3588432.3591516), [arXiv:2302.04264](https://arxiv.org/abs/2302.04264)
+7. Xu, C., Kerr, J., & Kanazawa, A. (2024). Splatfacto-W: A Nerfstudio Implementation of Gaussian Splatting for Unconstrained Photo Collections. [arXiv:2407.12306](https://arxiv.org/abs/2407.12306)
+8. Zhang, D., Wang, C., Wang, W., Li, P., Qin, M., & Wang, H. (2024). Gaussian in the Wild: 3D Gaussian Splatting for Unconstrained Image Collections. In *Computer Vision - ECCV 2024*, 341-359. [DOI:10.1007/978-3-031-73116-7_20](https://doi.org/10.1007/978-3-031-73116-7_20)
