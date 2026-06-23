@@ -423,11 +423,14 @@ $$
 局部法线由相邻点叉乘得到：
 
 $$
+\mathbf{a} = \mathbf{P}_{u+1,v}-\mathbf{P}_{u-1,v}, \quad
+\mathbf{b} = \mathbf{P}_{u,v+1}-\mathbf{P}_{u,v-1}
+$$
+
+$$
 \mathbf{n}_D =
-\frac{(\mathbf{P}_{u+1,v}-\mathbf{P}_{u-1,v}) \times
-(\mathbf{P}_{u,v+1}-\mathbf{P}_{u,v-1})}
-\left\|(\mathbf{P}_{u+1,v}-\mathbf{P}_{u-1,v}) \times
-(\mathbf{P}_{u,v+1}-\mathbf{P}_{u,v-1})\right\|}
+\frac{\mathbf{a} \times \mathbf{b}}
+{\left\|\mathbf{a} \times \mathbf{b}\right\|}
 $$
 
 代码对应：
