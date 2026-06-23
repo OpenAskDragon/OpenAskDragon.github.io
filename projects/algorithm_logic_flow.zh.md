@@ -1,6 +1,6 @@
 ---
 title: "StreetCrafter 算法逻辑与工程流程说明"
-date: 2026-06-22
+date: 2026-06-23
 tags: [StreetCrafter, 3DGS, Video Diffusion, Autonomous Driving]
 gitalk: false
 ---
@@ -922,30 +922,243 @@ Waymo 原始数据
               |-- densify / prune / opacity reset / checkpoint
 ```
 
-## 12. 工程调试与扩展建议
+## 12. 公式与代码对应关系
+
+本节把核心公式、实现位置和变量名对应起来，便于从论文式描述追踪到代码实现。公式使用的符号与代码变量不完全同名；下表优先列出代码中的实际张量名。
+
+### 12.1 Gaussian 参数化
+
+| 公式或逻辑 | 代码位置 | 代码变量 |
+|------------|----------|----------|
+| Gaussian 中心直接优化：$\mu_i = \_xyz_i$ | `street_gaussian/models/gaussian_model.py::get_xyz` | `_xyz`, `get_xyz` |
+| log-space scale 转实际尺度：$s_i = \exp(\_scaling_i)$ | `street_gaussian/models/gaussian_model.py::setup_functions`, `get_scaling` | `_scaling`, `scaling_activation`, `get_scaling` |
+| quaternion 归一化：$q_i = \operatorname{normalize}(\_rotation_i)$ | `street_gaussian/models/gaussian_model.py::get_rotation` | `_rotation`, `rotation_activation`, `get_rotation` |
+| opacity 激活：$\alpha_i = \sigma(\_opacity_i)$ | `street_gaussian/models/gaussian_model.py::get_opacity` | `_opacity`, `opacity_activation`, `get_opacity` |
+| 协方差由尺度和旋转构成：$\Sigma_i = R(q_i)\,\operatorname{diag}(s_i)^2 R(q_i)^T$ | `street_gaussian/models/gaussian_model.py::get_covariance` | `get_scaling`, `_rotation`, `build_covariance_from_scaling_rotation` |
+| 初始化尺度：$\_scaling_i = \log\sqrt{d_i^2}$，其中 $d_i^2$ 来自最近邻距离 | `GaussianModel.create_from_pcd`, `GaussianModelActor.create_from_pcd` | `distCUDA2`, `dist2`, `scales` |
+| 初始化 opacity：$\_opacity_i = \operatorname{logit}(0.1)$ | `GaussianModel.create_from_pcd`, `GaussianModelActor.create_from_pcd` | `inverse_sigmoid(0.1)`, `opacities` |
+
+基础 Gaussian 的颜色以球谐系数表示。静态 background 使用 `_features_dc + _features_rest`；actor 的 DC 颜色额外带时间 Fourier 调制。
+
+### 12.2 Actor 时序颜色与世界坐标变换
+
+actor Gaussian 在局部坐标中优化，渲染时根据 tracklet/learned pose 放置到世界坐标：
+
+$$
+x_{world} = R_{actor}(t) x_{local} + t_{actor}(t)
+$$
+
+$$
+q_{world} = q_{actor}(t) \otimes q_{local}
+$$
+
+对应实现：
+
+- `street_gaussian/models/street_gaussian_model.py::parse_camera()` 从 `ActorPose` 读取 `obj_rot` 和 `obj_trans`。
+- `StreetGaussianModel.get_xyz` 用 `torch.einsum('bij, bj -> bi', obj_rots, xyzs_local) + self.obj_trans` 计算 actor 世界坐标。
+- `StreetGaussianModel.get_rotation` 用 `quaternion_raw_multiply(self.obj_rots, rotations_local)` 合成世界旋转。
+
+actor 的时间变化颜色使用 IDFT 基函数调制 DC 球谐项：
+
+$$
+\tau = \text{fourier\_scale}\cdot\frac{frame-start\_frame}{end\_frame-start\_frame}
+$$
+
+$$
+f_{dc}(frame)=\sum_k a_k\,\operatorname{IDFT}_k(\tau)
+$$
+
+对应实现为 `street_gaussian/models/gaussian_model_actor.py::get_features_fourier()`：
+
+- `normalized_frame = (frame - self.start_frame) / (self.end_frame - self.start_frame)`
+- `idft_base = IDFT(time, self.fourier_dim)[0]`
+- `features_dc = torch.sum(features_dc * idft_base[..., None], dim=1, keepdim=True)`
+
+当 `fourier_dim=1` 时，只有一个 DC 系数参与求和，actor 颜色近似退化为静态颜色。
+
+### 12.3 gsplat 渲染路径
+
+渲染器先从 `StreetGaussianModel` 取当前相机场景图下的拼接参数：
+
+| 数学对象 | 代码变量 | 来源 |
+|----------|----------|------|
+| Gaussian 中心 $\mu$ | `xyz3` | `pc.get_xyz` |
+| SH 颜色系数 | `rgb3` | `pc.get_features` |
+| 尺度 $s$ | `scale` | `pc.get_scaling` |
+| 旋转 $q$ | `quats` | `pc.get_rotation` |
+| opacity $\alpha$ | `occ1`, `opacities` | `pc.get_opacity` |
+| 相机外参/内参 | `w2c`, `K` | `camera.world_view_transform`, `camera.K` |
+
+`street_gaussian/models/street_gaussian_renderer.py::render_kernel_gsplat()` 的主要步骤是：
+
+1. `fully_fused_projection()` 将 3D Gaussian 投影到屏幕，得到 `radii`、`means2d`、`depths`、`conics`。
+2. `isect_tiles()` 和 `isect_offset_encode()` 构建 Gaussian 与屏幕 tile 的相交索引。
+3. `spherical_harmonics()` 根据相机视线方向 `dirs = xyz3 - camera_center` 计算 RGB。
+4. `rasterize_to_pixels()` 执行 alpha compositing，输出 `render_colors` 和 `render_alphas`。
+
+若启用 depth 通道，代码将 `depths` 拼到颜色通道后渲染，并在输出时做归一化：
+
+$$
+D(u,v)=\frac{\sum_i T_i\alpha_i d_i}{\sum_i T_i\alpha_i + \epsilon}
+$$
+
+对应代码：
+
+- `colors = torch.cat((colors, depths[..., None]), dim=-1)`
+- `rendered_depth = render_colors[..., -1:] / render_alphas.clamp(min=1e-10)`
+- `rendered_acc = render_alphas`
+
+天空合成使用标准前景 alpha 补背景形式：
+
+$$
+I_{final}=I_{gaussian}+I_{sky}(1-A_{gaussian})
+$$
+
+对应代码为 `StreetGaussianRenderer.render()` 中的：
+
+- `result['rgb'] = result['rgb'] + result_sky['rgb'] * (1 - result['acc'])`
+- 或 cubemap 分支中的 `sky_color * (1 - result['acc'])`
+
+### 12.4 真实视角与新视角训练损失
+
+真实视角使用真实图像 `viewpoint_cam.original_image`，损失定义为：
+
+$$
+L_{real} =
+(1-\lambda_{dssim})\lambda_{l1}L_1(I, I^*, M)
++\lambda_{dssim}(1-SSIM(I, I^*, M))
++\lambda_{lpips}LPIPS(I\odot M, I^*\odot M)
+$$
+
+对应代码为 `train.py`：
+
+- `Ll1 = l1_loss(image, gt_image, mask)`
+- `ssim_value = ssim(image, gt_image, mask=mask)`
+- `lpips_value = lpips(image * mask, gt_image * mask)`
+- `loss = (1.0 - lambda_dssim) * lambda_l1 * Ll1 + ...`
+
+新视角使用扩散生成的 `viewpoint_cam.meta["diffusion_original_image"]` 作为伪 GT。代码只在图像下方 60% 区域计算损失：
+
+$$
+u = \lfloor 0.4H\rfloor,\quad
+L_{novel}=\lambda_{novel}\left[
+(1-\lambda_{novel\_dssim})\lambda_{novel\_l1}L_1(I_{u:H}, \hat I_{u:H}, M_{u:H})
++\lambda_{novel\_dssim}(1-SSIM)
++\lambda_{novel\_lpips}LPIPS
+\right]
+$$
+
+对应代码为：
+
+- `upper = int(mask.shape[-2] * 0.4)`
+- `image_loss = image[:, upper:, :]`
+- `gt_image_loss = gt_image[:, upper:, :]`
+- `loss = loss * optim_args.lambda_novel`
+
+真实视角还包含若干正则：
+
+| 正则 | 公式形式 | 代码变量 |
+|------|----------|----------|
+| sky loss | sky 区域 $-\log(1-A)$，非 sky 区域使用 alpha entropy | `sky_loss`, `sky_mask`, `acc` |
+| object acc | object bound 内用 entropy，bound 外用 $-\log(1-A_{obj})$ | `obj_acc_loss`, `obj_bound`, `acc_obj` |
+| LiDAR depth | 取 $\lvert D-D_{lidar}\rvert$ 最小的 95% 点求均值 | `depth_error`, `torch.topk(..., largest=False)` |
+| scale flatten | $\min(s)+\frac{s_1^2+s_2^2}{s_1s_2}-2$ | `scaling_reg_loss`, `scaling.topk(2)` |
+
+### 12.5 扩散训练损失与条件输入
+
+`video_diffusion/vwm/modules/diffusionmodules/loss.py::StandardDiffusionLoss` 使用 EDM 风格噪声级别：
+
+$$
+x_\sigma = x + \sigma\epsilon
+$$
+
+对应代码：
+
+- `sigmas = self.sigma_sampler(input.shape[0]).to(input)`
+- `noise = torch.randn_like(input)`
+- `noised_input = input + noise * sigmas_bc`
+
+Denoiser 预测 clean latent，损失按 sigma weighting 加权：
+
+$$
+L_{diff}=\mathbb{E}\left[w(\sigma)\lVert \hat{x}_0-x\rVert_p\right]
+$$
+
+对应代码：
+
+- `model_output = denoiser(network, noised_input, sigmas, cond, cond_mask)`
+- `w = append_dims(self.loss_weighting(sigmas), input.ndim)`
+- L2 分支：`(w * (predict - target) ** 2)`
+- L1 分支：`(w * (predict - target).abs())`
+
+LiDAR guidance 在推理封装中先经过 VAE 编码：
+
+- `guidance = model.encode_first_stage(value_dict['guide_frames'])`
+- conditional 分支使用 `guidance_c["scale"] = 1`
+- unconditional 分支使用 `guidance_uc["scale"] = 0`
+
+这对应条件视频扩散中的“有 LiDAR 条件”和“无 LiDAR 条件”两支，用于 classifier-free guidance。
+
+### 12.6 训练外引导采样
+
+`EulerEDMSamplerSDS` 在 `cond` 中存在 `sample_guidance` 时，不从纯噪声开始，而从当前 Gaussian render latent 附近开始：
+
+$$
+N_{infer}=\lfloor N\cdot scale\rfloor
+$$
+
+$$
+start=N-N_{infer}
+$$
+
+$$
+z_{start}=z_{render}+\sigma_{start}\epsilon
+$$
+
+对应代码为 `video_diffusion/vwm/modules/diffusionmodules/sampling.py::EulerEDMSamplerSDS.__call__()`：
+
+- `num_inference_steps = int(self.num_steps * scale)`
+- `start_step = self.num_steps - num_inference_steps`
+- `render_latents = cond['sample_guidance']['input']`
+- `x = render_latents + x * start_sigma`
+
+条件帧替换使用 mask 混合：
+
+$$
+x \leftarrow x(1-M_{cond})+z_{cond}M_{cond}
+$$
+
+对应代码：
+
+- `cond_mask[cond_indices] = 1`
+- `x = x * append_dims(1 - cond_mask, x.ndim) + cond_frame * append_dims(cond_mask, cond_frame.ndim)`
+
+需要注意的是，`sampler_step()` 中更细粒度的 mask blending 分支仍处于注释状态；实际生效的是“以 render latent 作为带噪初值”的训练外引导。
+
+## 13. 工程调试与扩展建议
 
 StreetCrafter 的代码结构把数据预处理、条件视频生成和 3DGS 蒸馏拆成多个相对独立的入口。二次开发时，较稳妥的排查顺序是先确认数据产物，再确认相机与条件图路径，最后进入训练循环和损失项。
 
-### 12.1 数据侧检查
+### 13.1 数据侧检查
 
 - 原始 Waymo/PandaSet 数据应先被转换为统一场景目录，场景目录中至少需要包含图像、相机内外参、ego pose、tracklet 和 LiDAR 产物。
 - LiDAR 条件图与 mask 的文件命名必须和 camera metadata 中的 `guidance_rgb_path`、`guidance_mask_path` 一致；新轨迹 shift 会改变条件图目录名，例如 `color_render_shift_2.00`。
 - 新视角训练依赖扩散伪监督。如果 `camera.meta["diffusion_original_image"]` 不存在，新视角 camera 不应被当作有效伪 GT 使用。
 
-### 12.2 模型侧检查
+### 13.2 模型侧检查
 
 - 若 3DGS 在真实视角上无法收敛，应优先检查 PLY 初始化、相机坐标系、mask、sky mask 和 LiDAR depth，而不是先调扩散模型。
 - 若新视角出现结构漂移，应检查 lane shift 方向、`LANE_SHIFT_SIGN`、actor `skip_camera` 判断和新轨迹 LiDAR 条件是否同步生成。
 - 若扩散结果稳定但蒸馏结果变差，应关注 `lambda_novel`、下方 60% 伪监督区域、LPIPS 权重和 `sample_scales` 的时间调度。
 
-### 12.3 常见扩展点
+### 13.3 常见扩展点
 
 - 新数据集接入通常需要实现 dataparser、相机列表构造、tracklet/actor metadata、LiDAR 条件渲染和 Dataset callback 注册。
 - 多相机新视角需要同时扩展 novel camera 生成逻辑、条件图路径规则、扩散窗口组织和保存逻辑。
 - 更强的扩散引导可以从 `EulerEDMSamplerSDS` 的 mask blending 注释分支、`training_free_guidance` 输入和 `masked_guidance` 配置入手。
 - 更复杂的动态目标建模可以从 actor local Gaussian 初始化、`ActorPose` 优化和 deformable actor 的时间特征表示入手。
 
-## 13. 实现边界与注意事项
+## 14. 实现边界与注意事项
 
 1. `street_gaussian/datasets/dataset.py` 只注册了 Waymo 读取函数。仓库中有 PandaSet 的 processor 和 video diffusion dataset，但顶层 3DGS Dataset 回调未注册 PandaSet。
 2. 扩散采样中的 mask blending 逻辑目前在 `EulerEDMSamplerSDS.sampler_step()` 中是注释状态；实际生效的是以 Gaussian render latent 作为带噪初值的训练外引导。

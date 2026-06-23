@@ -22,3 +22,8 @@ gitalk: false
 ### [3DGS：核心原理、技术路线与代码对应](./3dgs_algorithm)
 
 围绕 3D Gaussian Splatting 的场景表示、可微 splatting、训练优化、densification、几何一致性、视觉定位与 Nerfstudio 插件实现，整理公式、技术路线和代码对应关系。
+
+### [StreetCrafter 算法逻辑与工程流程说明](./algorithm_logic_flow.zh)
+
+面向自动驾驶街景新视角合成的工程文档，梳理 LiDAR 条件视频扩散、动态 3D Gaussian 蒸馏、真实/新视角损失、SDS 采样初始化，以及核心公式与代码变量的对应关系。
+

@@ -47,6 +47,7 @@ export default defineConfig({
           items: [
             { text: 'R-VIO2 算法详解', link: '/projects/rvio2_algorithm' },
             { text: '3DGS 核心原理与技术路线', link: '/projects/3dgs_algorithm' },
+            { text: 'StreetCrafter 算法逻辑与工程流程', link: '/projects/algorithm_logic_flow.zh' },
           ],
         },
       ],
