@@ -71,7 +71,7 @@
 
   <!-- elimination arrow/label -->
   <path d="M917 380 H962" fill="none" stroke="#697f94" stroke-width="3" marker-end="url(#arrow)"/>
-  <text x="913" y="344" class="t">eliminate each</text><text x="913" y="360" class="t">point increment</text>
+  <text x="940" y="118" text-anchor="middle" class="t">eliminate each</text><text x="940" y="136" text-anchor="middle" class="t">point increment</text>
   <g transform="translate(908 408)"><rect width="62" height="52" rx="10" fill="#fff3ee" stroke="#f0a08b"/><text x="15" y="23" class="t">Pⱼ block</text><text x="12" y="40" class="t">solve locally</text></g>
 
   <!-- section 3 reduced -->

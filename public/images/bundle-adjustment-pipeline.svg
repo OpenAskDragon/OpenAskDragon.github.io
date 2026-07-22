@@ -46,7 +46,7 @@
 
   <!-- connector 1 -->
   <path d="M286 325 H342" fill="none" stroke="#6f8298" stroke-width="3" marker-end="url(#arrow)"/>
-  <text x="294" y="303" class="tiny">detect + match</text>
+  <text x="314" y="128" text-anchor="middle" class="tiny">detect + match</text>
 
   <!-- Stage 2: tracks -->
   <g filter="url(#shadow)"><rect x="356" y="160" width="210" height="330" rx="18" fill="#fff" stroke="#cdddea"/></g>
@@ -68,7 +68,7 @@
 
   <!-- connector 2 -->
   <path d="M580 325 H636" fill="none" stroke="#6f8298" stroke-width="3" marker-end="url(#arrow)"/>
-  <text x="579" y="303" class="tiny">seed geometry</text>
+  <text x="608" y="128" text-anchor="middle" class="tiny">seed geometry</text>
 
   <!-- Stage 3: initial -->
   <g filter="url(#shadow)"><rect x="650" y="160" width="210" height="330" rx="18" fill="#fff" stroke="#cdddea"/></g>
@@ -86,7 +86,7 @@
 
   <!-- connector into BA -->
   <path d="M874 325 H930" fill="none" stroke="#6f8298" stroke-width="3" marker-end="url(#arrow)"/>
-  <text x="873" y="303" class="tiny">joint refinement</text>
+  <text x="902" y="128" text-anchor="middle" class="tiny">joint refinement</text>
 
   <!-- Stage 4: BA -->
   <g filter="url(#shadow)"><rect x="944" y="136" width="290" height="378" rx="20" fill="url(#ba)"/></g>
@@ -106,7 +106,7 @@
 
   <!-- connector out -->
   <path d="M1248 325 H1302" fill="none" stroke="#6f8298" stroke-width="3" marker-end="url(#arrow)"/>
-  <text x="1241" y="303" class="tiny">iterate → converge</text>
+  <text x="1300" y="128" text-anchor="middle" class="tiny">iterate → converge</text>
 
   <!-- Output inset -->
   <g filter="url(#shadow)"><rect x="1256" y="160" width="88" height="330" rx="18" fill="#edf8f3" stroke="#a9d6c0"/></g>
