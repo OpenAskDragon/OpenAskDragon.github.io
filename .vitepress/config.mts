@@ -15,12 +15,18 @@ export default defineConfig({
 
   // MathJax3 for LaTeX math rendering
   markdown: {
+    headers: { level: [2, 3] },
     config: (md) => {
       md.use(mathjax3)
     },
   },
 
   themeConfig: {
+    outline: {
+      level: [2, 3],
+      label: '目录',
+    },
+
     // Top nav bar
     nav: [
       { text: '首页', link: '/' },
