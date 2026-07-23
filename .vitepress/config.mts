@@ -43,6 +43,10 @@ export default defineConfig({
         {
           text: '文章',
           items: [
+            {
+              text: 'Bundle Adjustment 的现代综合',
+              link: '/posts/2026-07-22-从-调一调重建-到可审计估计-重读-bundle-adjustment-的现代综合',
+            },
             { text: 'SDV LOAM', link: '/posts/2024-04-06-sdv-loam' },
           ],
         },
