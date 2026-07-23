@@ -21,9 +21,11 @@
   <!-- section 1 -->
   <g filter="url(#shadow)"><rect x="64" y="147" width="355" height="470" rx="18" fill="#fff" stroke="#cdddea"/></g>
   <text x="88" y="185" class="k">01 · OBSERVATION GRAPH</text>
-  <text x="88" y="215" class="l">Only observed camera–point pairs couple</text>
-  <text x="88" y="240" class="s">Each feature measurement touches one camera and one 3D point.</text>
-  <g transform="translate(95 275)">
+  <text x="88" y="215" class="l">Only observed camera–point</text>
+  <text x="88" y="238" class="l">pairs couple</text>
+  <text x="88" y="261" class="s">Each feature measurement touches one camera</text>
+  <text x="88" y="280" class="s">and one 3D point.</text>
+  <g transform="translate(95 310)">
     <text x="2" y="0" class="t">camera blocks</text><text x="212" y="0" class="t">point blocks</text>
     <g fill="#e7f3ff" stroke="#4b9fea" stroke-width="2">
       <rect x="13" y="27" width="66" height="34" rx="8"/><rect x="13" y="109" width="66" height="34" rx="8"/><rect x="13" y="191" width="66" height="34" rx="8"/>
@@ -40,7 +42,7 @@
     <g fill="#f08062"><circle cx="234" cy="43" r="3"/><circle cx="234" cy="112" r="3"/><circle cx="234" cy="181" r="3"/><circle cx="234" cy="250" r="3"/></g>
   </g>
   <rect x="88" y="570" width="307" height="27" rx="8" fill="#f4f8fb"/>
-  <text x="101" y="588" class="t">missing edges are the source of computational sparsity</text>
+  <text x="101" y="588" class="t">missing edges create computational sparsity</text>
 
   <!-- arrow -->
   <path d="M435 380 H483" fill="none" stroke="#697f94" stroke-width="3" marker-end="url(#arrow)"/>
@@ -78,17 +80,18 @@
   <g filter="url(#shadow)"><rect x="979" y="147" width="357" height="470" rx="18" fill="#f0f8ff" stroke="#a9cee9"/></g>
   <text x="1004" y="185" class="k">03 · REDUCED SYSTEM</text>
   <text x="1004" y="215" class="l">Solve only camera increments</text>
-  <text x="1004" y="240" class="s">Each eliminated point contributes camera-to-camera information.</text>
-  <g transform="translate(1015 278)">
+  <text x="1004" y="240" class="s">Each eliminated point contributes</text>
+  <text x="1004" y="260" class="s">camera-to-camera information.</text>
+  <g transform="translate(1015 294)">
     <text x="0" y="-13" class="t">camera blocks after point elimination</text>
     <rect width="264" height="172" rx="12" fill="#fff" stroke="#b2cfe7"/>
     <g fill="#275b93"><rect x="19" y="18" width="53" height="40" rx="6"/><rect x="105" y="18" width="53" height="40" rx="6"/><rect x="191" y="18" width="53" height="40" rx="6"/><rect x="19" y="111" width="53" height="40" rx="6"/><rect x="105" y="111" width="53" height="40" rx="6"/><rect x="191" y="111" width="53" height="40" rx="6"/></g>
     <g stroke="#4b9fea" stroke-width="3"><path d="M72 38 H105 M158 38 H191 M45 58 V111 M131 58 V111 M217 58 V111 M72 131 H105 M158 131 H191"/></g>
     <g fill="#fff" style="font:700 13px Arial,Helvetica,sans-serif"><text x="35" y="43">C₁</text><text x="121" y="43">C₂</text><text x="207" y="43">C₃</text><text x="35" y="136">C₁</text><text x="121" y="136">C₂</text><text x="207" y="136">C₃</text></g>
-    <text x="52" y="88" class="t">shared points induce reduced camera couplings</text>
+    <text x="70" y="88" class="t">shared-point couplings</text>
   </g>
   <rect x="1005" y="482" width="305" height="62" rx="10" fill="#173b66"/>
-  <text x="1021" y="508" style="font:italic 16px Georgia,'Times New Roman',serif;fill:#f0f8ff">(HCC − HCS HSS⁻¹ HSC) δxC</text>
+  <text x="1021" y="508" style="font:italic 14px Georgia,'Times New Roman',serif;fill:#f0f8ff">(HCC − HCS HSS⁻¹ HSC) δxC</text>
   <text x="1021" y="530" style="font:12px Arial,Helvetica,sans-serif;fill:#b9dcf7">= −(gC − HCS HSS⁻¹ gS)</text>
   <text x="1005" y="578" class="t">then back-substitute δxS point by point</text>
 

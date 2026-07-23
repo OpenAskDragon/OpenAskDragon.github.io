@@ -73,13 +73,15 @@
   <!-- Stage 3: initial -->
   <g filter="url(#shadow)"><rect x="650" y="160" width="210" height="330" rx="18" fill="#fff" stroke="#cdddea"/></g>
   <text x="672" y="197" class="k">03 · INITIALIZE</text>
-  <text x="672" y="226" class="l">A feasible starting point</text>
-  <g transform="translate(675 263)">
+  <text x="672" y="220" class="l">A feasible starting</text>
+  <text x="672" y="243" class="l">point</text>
+  <g transform="translate(675 272)">
     <path d="M7 88 L28 74 L28 102 Z" fill="#4b9fea"/><path d="M154 36 L177 22 L177 50 Z" fill="#4b9fea"/>
     <path d="M28 87 L93 56 L177 36 M28 87 L104 112 L177 36" stroke="#8ba8c2" stroke-width="2"/>
     <circle cx="93" cy="56" r="7" fill="#ff7757"/><circle cx="104" cy="112" r="7" fill="#ffc857"/><circle cx="130" cy="75" r="6" fill="#63b38a"/>
     <path d="M28 87 L130 75 L177 36" stroke="#b3c7d8" stroke-width="1.5" stroke-dasharray="4 4"/>
-    <text x="7" y="131" class="tiny">relative poses + triangulation</text>
+    <text x="7" y="131" class="tiny">relative poses</text>
+    <text x="7" y="146" class="tiny">+ triangulation</text>
   </g>
   <text x="672" y="455" class="s">c⁽⁰⁾, X⁽⁰⁾</text>
   <text x="672" y="476" class="tiny">close enough to begin iteration</text>
@@ -91,18 +93,19 @@
   <!-- Stage 4: BA -->
   <g filter="url(#shadow)"><rect x="944" y="136" width="290" height="378" rx="20" fill="url(#ba)"/></g>
   <text x="969" y="176" style="font:700 15px Arial,Helvetica,sans-serif;letter-spacing:1.2px;fill:#b9dcf7">04 · OPTIMIZE TOGETHER</text>
-  <text x="969" y="207" style="font:700 21px Arial,Helvetica,sans-serif;fill:#fff">Robust bundle adjustment</text>
-  <rect x="968" y="228" width="242" height="55" rx="10" fill="#0e2b4d" stroke="#467aa9"/>
-  <text x="985" y="250" class="formula">min Σ ρ( rᵀ Σ⁻¹ r ) + priors</text>
-  <text x="985" y="271" style="font:12px Arial,Helvetica,sans-serif;fill:#b9dcf7">weighted residuals · robust loss · constraints</text>
-  <g transform="translate(972 306)">
+  <text x="969" y="207" style="font:700 19px Arial,Helvetica,sans-serif;fill:#fff">Robust bundle adjustment</text>
+  <rect x="968" y="228" width="242" height="70" rx="10" fill="#0e2b4d" stroke="#467aa9"/>
+  <text x="985" y="250" class="formula">min Σ ρ( rᵀ Σ⁻¹ r )</text>
+  <text x="985" y="270" class="formula">+ priors</text>
+  <text x="985" y="288" style="font:11px Arial,Helvetica,sans-serif;fill:#b9dcf7">weighted residuals · robust loss · constraints</text>
+  <g transform="translate(972 314)">
     <rect width="234" height="122" rx="12" fill="#234e7d" stroke="#4d80ad"/>
     <g fill="#77c2ff"><rect x="21" y="24" width="22" height="18" rx="3"/><rect x="21" y="75" width="22" height="18" rx="3"/><rect x="190" y="48" width="22" height="18" rx="3"/></g>
     <g fill="#ff9a7e"><circle cx="95" cy="24" r="7"/><circle cx="137" cy="48" r="7"/><circle cx="97" cy="91" r="7"/></g>
     <g stroke="#c8e5ff" stroke-width="1.7"><path d="M43 33 L88 24 L130 48 L43 84 L90 91 L190 57 L144 48 L104 91" fill="none"/></g>
     <text x="17" y="113" style="font:12px Arial,Helvetica,sans-serif;fill:#c8e5ff">all cameras</text><text x="145" y="113" style="font:12px Arial,Helvetica,sans-serif;fill:#ffd2c6">all points</text>
   </g>
-  <g transform="translate(968 450)"><path d="M0 7 H38" stroke="#ffca67" stroke-width="4" stroke-linecap="round"/><circle cx="51" cy="7" r="5" fill="#ffca67"/><text x="65" y="11" style="font:12px Arial,Helvetica,sans-serif;fill:#dceeff">downweight outlying matches</text></g>
+  <g transform="translate(968 455)"><path d="M0 7 H38" stroke="#ffca67" stroke-width="4" stroke-linecap="round"/><circle cx="51" cy="7" r="5" fill="#ffca67"/><text x="65" y="11" style="font:12px Arial,Helvetica,sans-serif;fill:#dceeff">downweight outlying matches</text></g>
 
   <!-- connector out -->
   <path d="M1248 325 H1302" fill="none" stroke="#6f8298" stroke-width="3" marker-end="url(#arrow)"/>
